@@ -11,10 +11,10 @@ extern void scx_bpf_dsq_insert(struct task_struct *p, u64 dsq_id, u64 slice, u64
 /* Updated for 6.18+: consume -> dsq_move_to_local */
 extern bool scx_bpf_dsq_move_to_local(u64 dsq_id) __ksym;
 
-/* define default time slice */
-#ifndef SCX_SLICE_DFL
-#define SCX_SLICE_DFL 20000000
-#endif
+/* Define time slices for different priority tiers */
+#define SCX_SLICE_VIP      20000000  /* 20ms: High priority for critical tasks */
+#define SCX_SLICE_NORMAL   10000000  /* 10ms: Normal response for Shell/SSH */
+#define SCX_SLICE_HOG      5000      /* 5us:  Punishment for hogs (very short!) */
 
 /* Define the macro `SCX_OPS` */
 #define SCX_OPS(name, args...) SEC("struct_ops/"#name) BPF_PROG(name, ##args)
@@ -32,16 +32,42 @@ s32 SCX_OPS_SLEEPABLE(simple_init)
     return scx_bpf_create_dsq(SHARED_DSQ_ID, -1);
 }
 
+/* Helper function to check process name */
+static __always_inline bool match_name(const char *comm, const char *target)
+{
+    for (int i = 0; i < 16; i++) {
+        if (target[i] == '\0') return true; /* End of target string, match found */
+        if (comm[i] != target[i]) return false; /* Mismatch */
+    }
+    return true;
+}
+
 /* Enqueue Logic */
 void SCX_OPS(simple_enqueue, struct task_struct *p, u64 enq_flags)
 {
-    scx_bpf_dsq_insert(p, SHARED_DSQ_ID, SCX_SLICE_DFL, enq_flags);
+    /* Tier 1: Critical Task (VIP) */
+    if (match_name(p->comm, "critical_fixed")) {
+        /* Insert at HEAD (jump queue) with Long Slice */
+        scx_bpf_dsq_insert(p, SHARED_DSQ_ID, SCX_SLICE_VIP, enq_flags | SCX_ENQ_HEAD);
+        return;
+    }
+
+    /* Tier 2: CPU Hog (Trash) */
+    if (match_name(p->comm, "hog")) {
+        /* Insert at TAIL with Tiny Slice (Throttle them) */
+        scx_bpf_dsq_insert(p, SHARED_DSQ_ID, SCX_SLICE_HOG, enq_flags);
+        return;
+    }
+
+    /* Tier 3: Everything else (SSH, Systemd, Shell) */
+    /* Insert at TAIL but with a Normal Slice to keep system responsive */
+    scx_bpf_dsq_insert(p, SHARED_DSQ_ID, SCX_SLICE_NORMAL, enq_flags);
 }
 
 /* Dispatch Logic */
 void SCX_OPS(simple_dispatch, s32 cpu, struct task_struct *prev)
 {
-    /* Consume a task from the queue (FIFO) */
+    /* Move task from our shared queue to the local CPU */
     scx_bpf_dsq_move_to_local(SHARED_DSQ_ID);
 }
 
