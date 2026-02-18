@@ -1,0 +1,14 @@
+# Scheduler build artifacts
+scheduler/simple.bpf.o
+scheduler/vmlinux.h
+
+# Workload binaries
+workloads/hog
+workloads/critical
+workloads/critical_2
+
+# Common local cruft
+.vscode/
+*.swp
+*.swo
+.DS_Store
