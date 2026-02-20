@@ -12,3 +12,6 @@ workloads/critical_2
 *.swp
 *.swo
 .DS_Store
+
+# Generated files
+*.json

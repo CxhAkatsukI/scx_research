@@ -14,7 +14,7 @@ extern bool scx_bpf_dsq_move_to_local(u64 dsq_id) __ksym;
 /* Define time slices for different priority tiers */
 #define SCX_SLICE_VIP      20000000  /* 20ms: High priority for critical tasks */
 #define SCX_SLICE_NORMAL   10000000  /* 10ms: Normal response for Shell/SSH */
-#define SCX_SLICE_HOG      5000      /* 5us:  Punishment for hogs (very short!) */
+#define SCX_SLICE_HOG      1000000   /* 1ms:  Punishment for hogs (making it too short will cause trouble!!) */
 
 /* Define the macro `SCX_OPS` */
 #define SCX_OPS(name, args...) SEC("struct_ops/"#name) BPF_PROG(name, ##args)
@@ -46,7 +46,7 @@ static __always_inline bool match_name(const char *comm, const char *target)
 void SCX_OPS(simple_enqueue, struct task_struct *p, u64 enq_flags)
 {
     /* Tier 1: Critical Task (VIP) */
-    if (match_name(p->comm, "critical_fixed")) {
+    if (match_name(p->comm, "critical_2")) {
         /* Insert at HEAD (jump queue) with Long Slice */
         scx_bpf_dsq_insert(p, SHARED_DSQ_ID, SCX_SLICE_VIP, enq_flags | SCX_ENQ_HEAD);
         return;
@@ -71,11 +71,32 @@ void SCX_OPS(simple_dispatch, s32 cpu, struct task_struct *prev)
     scx_bpf_dsq_move_to_local(SHARED_DSQ_ID);
 }
 
+/* Visualizing Tracker */
+/* Activate when a task begins to run on CPU */
+void SCX_OPS(simple_running, struct task_struct *p) {
+    /* Only print process whose name begins with h */
+    if (p->comm[0] == 'c' || p->comm[0] == 'h') {
+        s32 cpu = bpf_get_smp_processor_id();
+        /* Print to kernel log */
+        bpf_printk("[SCX] CPU=%d EV=START COMM=%s", cpu, p->comm);
+    }
+}
+
+/* Activate when a task is stopped */
+void SCX_OPS(simple_stopping, struct task_struct *p, bool runnable) {
+    if (p->comm[0] == 'c' || p->comm[0] == 'h') {
+        s32 cpu = bpf_get_smp_processor_id();
+        bpf_printk("[SCX] CPU=%d EV=STOP COMM=%s", cpu, p->comm);
+    }
+}
+
 /* Register the functions to kernel */
 SEC(".struct_ops.link")
 struct sched_ext_ops simple_ops = {
     .enqueue    = (void *)simple_enqueue,
     .dispatch   = (void *)simple_dispatch,
     .init       = (void *)simple_init,
+    .running    = (void *)simple_running,
+    .stopping   = (void *)simple_stopping,
     .name       = "simple_scheduler", /* Register the scheduler's name*/
 };
