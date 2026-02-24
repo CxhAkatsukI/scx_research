@@ -1,6 +1,7 @@
 # Scheduler build artifacts
 scheduler/simple.bpf.o
 scheduler/vmlinux.h
+__pycache__/
 
 # Workload binaries
 workloads/hog
