@@ -52,13 +52,17 @@ static __always_inline bool match_name(const char *comm, const char *target) {
  */
 s32 SCX_OPS(simple_select_cpu, struct task_struct *p, s32 prev_cpu, u64 wake_flags) {
     if (match_name(p->comm, "critical_2")) {
-        /* * CPU ISOLATION / NUMA: Force VIP tasks to stay on CPU 0 or 1.
-         * This prevents cache eviction and maximizes L1/L2 locality.
+        /*
+         * Always keep critical_2 on the VIP island (CPU 0/1) but spread
+         * threads across both siblings. Without the hash below every new
+         * thread inherits its creator's CPU (usually 0) and the second VIP
+         * thread sits queued while CPU1 is given to hogs.
          */
-        s32 target_cpu = (prev_cpu == 0 || prev_cpu == 1) ? prev_cpu : 0;
+        s32 target_cpu = (prev_cpu == 0 || prev_cpu == 1) ?
+                         prev_cpu : (p->pid & 1); /* even pids -> CPU0, odd -> CPU1 */
 
-        /* * PREEMPTION: If CPU 0/1 is currently running a Hog, kick it off immediately!
-         * This fulfills the requirement: "preempt y running on its dedicated CPUs"
+        /* Preempt whatever is running on the chosen VIP CPU so the critical
+         * thread takes over immediately.
          */
         if (scx_bpf_kick_cpu) {
             scx_bpf_kick_cpu(target_cpu, 0);
