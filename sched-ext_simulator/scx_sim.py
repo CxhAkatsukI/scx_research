@@ -7,6 +7,15 @@ class TaskState(Enum):
     RUNNABLE = 0
     RUNNING = 1
     SLEEPING = 2
+    
+class ScxBuiltinDsqId(Enum):
+	SCX_DSQ_FLAG_BUILTIN = 9223372036854775808
+	SCX_DSQ_FLAG_LOCAL_ON = 4611686018427387904
+	SCX_DSQ_INVALID = 9223372036854775808
+	SCX_DSQ_GLOBAL = 9223372036854775809
+	SCX_DSQ_LOCAL = 9223372036854775810
+	SCX_DSQ_LOCAL_ON = 13835058055282163712
+	SCX_DSQ_LOCAL_CPU_MASK = 4294967295
 
 class Task:
     def __init__(self, pid: int, name: str, run_burst: int, sleep_burst: int, is_critical=False):
@@ -16,28 +25,29 @@ class Task:
         After running for "run burst" ticks on CPU, the task will go to sleep for
         "sleep burst" ticks, then become runnable again.
         '''
-        self.id = pid
-        self.name = name
-        self.is_critical = is_critical
-        self.state = TaskState.RUNNABLE
-        self.run_burst = run_burst
-        self.sleep_burst = sleep_burst
-        self.slice_left = 0
-        self.sleep_timer = 0
-        self.run_timer = run_burst
-        self.last_running_tick = 0
+        self.id: int = pid
+        self.name: str = name
+        self.is_critical: bool = is_critical
+        self.state: TaskState = TaskState.RUNNABLE
+        self.run_burst: int = run_burst
+        self.sleep_burst: int = sleep_burst
+        self.slice_left: int = 0
+        self.sleep_timer: int = 0
+        self.run_timer: int = run_burst
+        self.last_running_tick: int = 0
+        self.target_cpu: int = 0 # keep track of which CPU the task is targeting for local DSQ insertion
         
     def __repr__(self):
         return f"Task({self.name}, pid={self.id}, state={self.state.name}, slice={self.slice_left})"
 
 class SchedExtOps:
     def __init__(self):
-        self.simulator = None
+        self.simulator: KernelSimulator = None
 
     def init(self):
         pass
 
-    def select_cpu(self, task, prev_cpu: int, wake_flags: int) -> int:
+    def select_cpu(self, task: Task, prev_cpu: int, wake_flags: int) -> int:
         return prev_cpu
 
     def enqueue(self, task, enq_flags: int):
@@ -46,10 +56,10 @@ class SchedExtOps:
     def dispatch(self, cpu_id: int, prev_task):
         pass
 
-    def running(self, task, cpu_id: int):
+    def running(self, task: Task, cpu_id: int):
         pass
 
-    def stopping(self, task, cpu_id: int, runnable: bool):
+    def stopping(self, task: Task, cpu_id: int, runnable: bool):
         pass
 
     # Helpers provided by engine
@@ -63,28 +73,40 @@ class SchedExtOps:
         return self.simulator.dsq_move_to_local(cpu_id, dsq_id)
 
     def scx_bpf_kick_cpu(self, target_cpu: int, flags: int):
-        self.simulator.kick_cpu(target_cpu)
+        self.simulator.kick_cpu(target_cpu, flags)
 
 class KernelSimulator:
     def __init__(self, num_cpus=4):
-        self.num_cpus = num_cpus
-        self.tick = 0
-        self.cpus = [None] * num_cpus
-        self.kicked_cpus = [False] * num_cpus
-        self.dsqs = {} # dsq_id -> deque
-        self.tasks = []
-        self.policy = None
-        self.trace_events = []
-        self.next_pid = 1
+        self.num_cpus: int = num_cpus
+        self.tick: int = 0
+        self.cpus: list[Task] = [None] * num_cpus
+        self.kicked_cpus: list[bool] = [False] * num_cpus
+        self.global_dsqs: dict[int, deque] = {} # dsq_id -> deque
+        self.local_dsqs: dict[int, deque] = {} # cpu_id -> deque
+        self.tasks: list[Task] = []
+        self.policy: SchedExtOps = None
+        self.trace_events: list[dict] = []
+        self.next_pid: int = 1
+        # create default local DSQs for each CPU
+        for cpu_ids in range(num_cpus):
+            if cpu_ids not in self.local_dsqs:
+                self.local_dsqs[cpu_ids] = deque()
 
-    def create_dsq(self, dsq_id):
-        if dsq_id not in self.dsqs:
-            self.dsqs[dsq_id] = deque()
+    # create global DSQs on demand when policy calls scx_bpf_create_dsq
+    def create_dsq(self, dsq_id: int):
+        if dsq_id not in self.global_dsqs:
+            self.global_dsqs[dsq_id] = deque()
 
-    def dsq_insert(self, task, dsq_id, slice_us, enq_flags):
+    def dsq_insert(self, task: Task, dsq_id: int, slice_us: int, enq_flags: int):
         SCX_ENQ_HEAD = 1 # Define here or globally
         task.slice_left = slice_us
-        dsq = self.dsqs.get(dsq_id)
+
+        if dsq_id == ScxBuiltinDsqId.SCX_DSQ_LOCAL.value:
+            # Simplified logic for a simulator
+            dsq = self.local_dsqs.get(task.target_cpu)
+        else:
+            dsq = self.global_dsqs.get(dsq_id)
+
         if dsq is None:
             raise ValueError(f"DSQ {dsq_id} does not exist")
         
@@ -93,26 +115,26 @@ class KernelSimulator:
         else:
             dsq.append(task)
 
-    def dsq_move_to_local(self, cpu_id, dsq_id) -> bool:
-        dsq = self.dsqs.get(dsq_id)
+    def dsq_move_to_local(self, cpu_id: int, dsq_id: int) -> bool:
+        dsq = self.global_dsqs.get(dsq_id)
         if dsq and len(dsq) > 0:
             task = dsq.popleft()
             self.assign_task_to_cpu(task, cpu_id)
             return True
         return False
 
-    def kick_cpu(self, target_cpu):
+    def kick_cpu(self, target_cpu: int, flags: int):
         if 0 <= target_cpu < self.num_cpus:
             self.kicked_cpus[target_cpu] = True
 
-    def assign_task_to_cpu(self, task, cpu_id):
+    def assign_task_to_cpu(self, task: Task, cpu_id: int):
         task.state = TaskState.RUNNING
         task.last_running_tick = self.tick
         self.cpus[cpu_id] = task
         if self.policy:
             self.policy.running(task, cpu_id)
 
-    def add_workload(self, name, num_threads, run_burst=10000, sleep_burst=500):
+    def add_workload(self, name: str, num_threads: int, run_burst=10000, sleep_burst=0):
         is_critical = (name == "critical")
         for _ in range(num_threads):
             task = Task(self.next_pid, f"{name}_{self.next_pid-1}", run_burst, sleep_burst, is_critical)
@@ -124,16 +146,16 @@ class KernelSimulator:
                 # main.py suggests add_workload happens BEFORE attach_policy.
                 pass
 
-    def attach_policy(self, policy):
+    def attach_policy(self, policy: SchedExtOps):
         self.policy = policy
         policy.simulator = self
         policy.init()
         # Enqueue all existing tasks
         for task in self.tasks:
-            target_cpu = policy.select_cpu(task, 0, 0) # simplified prev_cpu
+            task.target_cpu = policy.select_cpu(task, 0, 0) # simplified prev_cpu
             policy.enqueue(task, 0)
 
-    def run(self, duration_ticks):
+    def run(self, duration_ticks: int):
         for _ in range(duration_ticks):
             self.step()
 
@@ -148,7 +170,7 @@ class KernelSimulator:
                     task.state = TaskState.RUNNABLE
                     task.run_timer = task.run_burst # Reset run timer for the new cycle
                     if self.policy:
-                        self.policy.select_cpu(task, 0, 0) # select CPU first, then enqueue
+                        task.target_cpu = self.policy.select_cpu(task, 0, 0) # select CPU first, then enqueue
                         self.policy.enqueue(task, 0)
         
         # Execution & Preemption
@@ -174,7 +196,11 @@ class KernelSimulator:
         # Dispatching
         for cpu_id in range(self.num_cpus):
             if self.cpus[cpu_id] is None:
-                self.policy.dispatch(cpu_id, None)
+                if self.local_dsqs[cpu_id]:
+                    next_task = self.local_dsqs[cpu_id].popleft()
+                    self.assign_task_to_cpu(next_task, cpu_id)
+                else:
+                    self.policy.dispatch(cpu_id, None)
 
         # Assertion Check
         # Skip for now to get the trace file
@@ -201,8 +227,10 @@ class KernelSimulator:
                 print(f"  CPU {i}: IDLE")
         
         print("State of all DSQs:")
-        for dsq_id, tasks in self.dsqs.items():
-            print(f"  DSQ {dsq_id}: {[t.name for t in tasks]}")
+        for dsq_id, tasks in self.global_dsqs.items():
+            print(f"GLOBAL  DSQ {dsq_id}: {[t.name for t in tasks]}")
+        for dsq_id, tasks in self.local_dsqs.items():
+            print(f"LOCAL  DSQ {dsq_id}: {[t.name for t in tasks]}")
         
         print("All Tasks State:")
         for t in self.tasks:
@@ -210,7 +238,7 @@ class KernelSimulator:
             
         sys.exit(1)
 
-    def record_trace(self, task, cpu_id, start_tick, end_tick):
+    def record_trace(self, task: Task, cpu_id: int, start_tick: int, end_tick: int):
         duration = end_tick - start_tick
         if duration > 0:
             self.trace_events.append({
@@ -223,6 +251,6 @@ class KernelSimulator:
                 "tid": f"CPU {cpu_id}"
             })
 
-    def export_perfetto(self, filename):
+    def export_perfetto(self, filename: str):
         with open(filename, 'w') as f:
             json.dump(self.trace_events, f, indent=2)

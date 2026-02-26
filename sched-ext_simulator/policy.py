@@ -1,4 +1,5 @@
-from scx_sim import SchedExtOps
+from scx_sim import SchedExtOps, Task
+from scx_sim import ScxBuiltinDsqId
 
 class MyPolicy(SchedExtOps):
     DSQ_NORMAL = 0
@@ -16,14 +17,14 @@ class MyPolicy(SchedExtOps):
         self.scx_bpf_create_dsq(self.DSQ_VIP, 0)
         self.scx_bpf_create_dsq(self.DSQ_HOG, 0)
 
-    def select_cpu(self, task, prev_cpu: int, wake_flags: int) -> int:
+    def select_cpu(self, task: Task, prev_cpu: int, wake_flags: int) -> int:
         if task.is_critical:
             target_cpu = prev_cpu if prev_cpu in [0, 1] else 0
             self.scx_bpf_kick_cpu(target_cpu, 0)
             return target_cpu
         return prev_cpu
 
-    def enqueue(self, task, enq_flags: int):
+    def enqueue(self, task: Task, enq_flags: int):
         if task.is_critical:
             self.scx_bpf_dsq_insert(task, self.DSQ_VIP, self.SLICE_VIP, self.SCX_ENQ_HEAD)
         else:
@@ -45,9 +46,10 @@ class MyPolicy(SchedExtOps):
             if self.scx_bpf_dsq_move_to_local(cpu_id, self.DSQ_HOG):
                 return
 
-    def running(self, task, cpu_id: int):
+    def running(self, task: Task, cpu_id: int):
+
         # The engine handles task.last_running_tick
         pass
 
-    def stopping(self, task, cpu_id: int, runnable: bool):
+    def stopping(self, task: Task, cpu_id: int, runnable: bool):
         self.simulator.record_trace(task, cpu_id, task.last_running_tick, self.simulator.tick)
