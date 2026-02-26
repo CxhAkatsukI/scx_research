@@ -6,8 +6,8 @@ if __name__ == "__main__":
     policy = MyPolicy()
     
     # 2 applications which run forever. Config param: number of threads.
-    simulator.add_workload("critical", num_threads=2)
-    simulator.add_workload("hog", num_threads=4)
+    simulator.add_workload("critical", num_threads=2, run_burst=5000, sleep_burst=200)
+    simulator.add_workload("hog", num_threads=4, run_burst=8000, sleep_burst=1000)
     
     simulator.attach_policy(policy)
     simulator.run(duration_ticks=5_000_000) # Run for 5 seconds
