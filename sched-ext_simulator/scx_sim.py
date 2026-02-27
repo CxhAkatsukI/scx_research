@@ -1,6 +1,7 @@
 import json
 from enum import Enum
 from collections import deque
+import random
 import sys
 
 class TaskState(Enum):
@@ -34,6 +35,7 @@ class Task:
         self.slice_left: int = 0
         self.sleep_timer: int = 0
         self.run_timer: int = run_burst
+        self.enqueue_tick: int = 0 # track the moment of enqueueing
         self.last_running_tick: int = 0
         self.target_cpu: int = 0 # keep track of which CPU the task is targeting for local DSQ insertion
         
@@ -80,7 +82,7 @@ class KernelSimulator:
         self.num_cpus: int = num_cpus
         self.tick: int = 0
         self.cpus: list[Task] = [None] * num_cpus
-        self.kicked_cpus: list[bool] = [False] * num_cpus
+        self.kicked_cpus: list[int] = [0] * num_cpus # Support kick latency
         self.global_dsqs: dict[int, deque] = {} # dsq_id -> deque
         self.local_dsqs: dict[int, deque] = {} # cpu_id -> deque
         self.tasks: list[Task] = []
@@ -100,6 +102,7 @@ class KernelSimulator:
     def dsq_insert(self, task: Task, dsq_id: int, slice_us: int, enq_flags: int):
         SCX_ENQ_HEAD = 1 # Define here or globally
         task.slice_left = slice_us
+        task.enqueue_tick = self.tick
 
         if dsq_id == ScxBuiltinDsqId.SCX_DSQ_LOCAL.value:
             # Simplified logic for a simulator
@@ -110,6 +113,7 @@ class KernelSimulator:
         if dsq is None:
             raise ValueError(f"DSQ {dsq_id} does not exist")
         
+        # whether the task is inserted at the head
         if enq_flags & SCX_ENQ_HEAD:
             dsq.appendleft(task)
         else:
@@ -125,11 +129,28 @@ class KernelSimulator:
 
     def kick_cpu(self, target_cpu: int, flags: int):
         if 0 <= target_cpu < self.num_cpus:
-            self.kicked_cpus[target_cpu] = True
+            self.kicked_cpus[target_cpu] = random.randint(0, 5) # Simulate a kick latency of 1-3 ticks
 
     def assign_task_to_cpu(self, task: Task, cpu_id: int):
+        # Record waiting time in DSQ before running
+        wait_duration = self.tick - task.enqueue_tick # Calculate waiting time in the DSQ
+        self.record_trace_raw(
+            f"WAIT: {task.name}",
+            cpu_id,
+            task.enqueue_tick,
+            self.tick
+        )
+        
+        # Record the running event
         task.state = TaskState.RUNNING
         task.last_running_tick = self.tick
+        self.record_trace(
+            task,
+            cpu_id,
+            task.last_running_tick,
+            task.last_running_tick + task.slice_left
+        )
+
         self.cpus[cpu_id] = task
         if self.policy:
             self.policy.running(task, cpu_id)
@@ -176,14 +197,22 @@ class KernelSimulator:
         # Execution & Preemption
         for cpu_id in range(self.num_cpus):
             task = self.cpus[cpu_id]
+            
+            # Check if a kick is pending
+            kick_triggered = False
+            if self.kicked_cpus[cpu_id] > 0:
+                self.kicked_cpus[cpu_id] -= 1
+                if self.kicked_cpus[cpu_id] == 0:
+                    kick_triggered = True
+
             if task:
-                task.slice_left -= 1
+                task.slice_left -= 1 # Decrease slice left
                 task.run_timer -= 1 # Decrease run timer as well
-                if task.slice_left <= 0 or self.kicked_cpus[cpu_id]:
+                if task.slice_left <= 0 or kick_triggered:
                     # Evict
                     self.policy.stopping(task, cpu_id, True)
                     self.cpus[cpu_id] = None
-                    self.kicked_cpus[cpu_id] = False
+                    self.kicked_cpus[cpu_id] = 0
                     # Decide next state of the task
                     if task.run_timer > 0:
                         task.state = TaskState.RUNNABLE
@@ -250,6 +279,25 @@ class KernelSimulator:
                 "pid": 0,
                 "tid": f"CPU {cpu_id}"
             })
+            
+    def record_trace_raw(self, name: str, cpu_id: int, start_tick: int, end_tick: int):
+        """
+        A more generic trace recording function that allows custom event names.
+        This can be used for recording events that are not directly tied to task
+        execution, like waiting in DSQ, being kicked, etc.
+        """
+        duration = end_tick - start_tick
+        if duration > 0:
+            self.trace_events.append({
+                "name": name,
+                "cat": "sched",
+                "ph": "X",
+                "ts": start_tick,
+                "dur": duration,
+                "pid": 0,
+                "tid": f"CPU {cpu_id}"
+            })
+
 
     def export_perfetto(self, filename: str):
         with open(filename, 'w') as f:

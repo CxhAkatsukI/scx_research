@@ -26,11 +26,23 @@ class MyPolicy(SchedExtOps):
 
     def enqueue(self, task: Task, enq_flags: int):
         if task.is_critical:
-            self.scx_bpf_dsq_insert(task, self.DSQ_VIP, self.SLICE_VIP, self.SCX_ENQ_HEAD)
+            # self.scx_bpf_dsq_insert(task, self.DSQ_VIP, self.SLICE_VIP, self.SCX_ENQ_HEAD)
+            # New policy: If critical, insert to LOCAL DSQ
+            self.scx_bpf_dsq_insert(
+                task,
+                self.DSQ_VIP,
+                self.SLICE_VIP,
+                self.SCX_ENQ_HEAD
+            )
         else:
             # Assuming non-critical tasks are "hog" for now based on the prompt's target policy description
             # "If hog, insert to DSQ_HOG with slice=1000, flag=0"
-            self.scx_bpf_dsq_insert(task, self.DSQ_HOG, self.SLICE_HOG, 0)
+            self.scx_bpf_dsq_insert(
+                task,
+                self.DSQ_HOG,
+                self.SLICE_HOG,
+                0
+            )
 
     def dispatch(self, cpu_id: int, prev_task):
         if cpu_id in [0, 1]:
@@ -52,4 +64,9 @@ class MyPolicy(SchedExtOps):
         pass
 
     def stopping(self, task: Task, cpu_id: int, runnable: bool):
-        self.simulator.record_trace(task, cpu_id, task.last_running_tick, self.simulator.tick)
+        self.simulator.record_trace(
+            task,
+            cpu_id,
+            task.last_running_tick,
+            self.simulator.tick
+        )
