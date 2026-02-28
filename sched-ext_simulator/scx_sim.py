@@ -144,12 +144,6 @@ class KernelSimulator:
         # Record the running event
         task.state = TaskState.RUNNING
         task.last_running_tick = self.tick
-        self.record_trace(
-            task,
-            cpu_id,
-            task.last_running_tick,
-            task.last_running_tick + task.slice_left
-        )
 
         self.cpus[cpu_id] = task
         if self.policy:
@@ -208,7 +202,7 @@ class KernelSimulator:
             if task:
                 task.slice_left -= 1 # Decrease slice left
                 task.run_timer -= 1 # Decrease run timer as well
-                if task.slice_left <= 0 or kick_triggered:
+                if task.slice_left <= 0 or task.run_timer <= 0 or kick_triggered:
                     # Evict
                     self.policy.stopping(task, cpu_id, True)
                     self.cpus[cpu_id] = None
