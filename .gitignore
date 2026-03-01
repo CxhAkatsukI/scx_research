@@ -1,12 +1,12 @@
 # Scheduler build artifacts
-scheduler/simple.bpf.o
-scheduler/vmlinux.h
+scx_simple/scheduler/simple.bpf.o
+scx_simple/scheduler/vmlinux.h
 __pycache__/
 
 # Workload binaries
-workloads/hog
-workloads/critical
-workloads/critical_2
+scx_simple/workloads/hog
+scx_simple/workloads/critical
+scx_simple/workloads/critical_2
 
 # Common local cruft
 .vscode/

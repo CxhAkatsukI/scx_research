@@ -42,7 +42,7 @@ void* monitor(void* arg) {
     clock_gettime(CLOCK_MONOTONIC, &last_time);
 
     while (running) {
-        sleep(1);
+        sleep(3);
         clock_gettime(CLOCK_MONOTONIC, &current_time);
         
         long current_total = 0;

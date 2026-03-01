@@ -60,6 +60,9 @@ s32 SCX_OPS(simple_select_cpu, struct task_struct *p, s32 prev_cpu, u64 wake_fla
          */
         s32 target_cpu = (prev_cpu == 0 || prev_cpu == 1) ?
                          prev_cpu : (p->pid & 1); /* even pids -> CPU0, odd -> CPU1 */
+        
+        /* Monitor the wakeup event */
+        bpf_printk("[SCX] EV=WAKEUP COMM=%s PID=%d TARGET_CPU=%d", p->comm, p->pid, target_cpu);
 
         /* Preempt whatever is running on the chosen VIP CPU so the critical
          * thread takes over immediately.
@@ -76,6 +79,11 @@ s32 SCX_OPS(simple_select_cpu, struct task_struct *p, s32 prev_cpu, u64 wake_fla
 
 /* Enqueue Logic: Sort tasks into their respective queues */
 void SCX_OPS(simple_enqueue, struct task_struct *p, u64 enq_flags) {
+
+    if (match_name(p->comm, "critical_2") || match_name(p->comm, "hog")) {
+        bpf_printk("[SCX] EV=ENQUEUE COMM=%s PID=%d", p->comm, p->pid);
+    }
+
     if (match_name(p->comm, "critical_2")) {
         scx_bpf_dsq_insert(p, DSQ_VIP, SCX_SLICE_VIP, enq_flags | SCX_ENQ_HEAD);
         return;
@@ -102,6 +110,9 @@ void SCX_OPS(simple_dispatch, s32 cpu, struct task_struct *prev) {
         /* 2nd Priority: Keep system responsive */
         if (scx_bpf_dsq_move_to_local(DSQ_NORMAL)) return;
         
+        /* Assert if priority inversion occurs */
+        bpf_printk("[SCX] EV=ASSERT CPU=%d", cpu);
+        
         /* 3rd Priority (WORK CONSERVATION): If VIP is sleeping, let Hog use the CPU! */
         scx_bpf_dsq_move_to_local(DSQ_HOG);
     } 
@@ -115,15 +126,19 @@ void SCX_OPS(simple_dispatch, s32 cpu, struct task_struct *prev) {
 
 /* Visualizer Hooks (Unchanged) */
 void SCX_OPS(simple_running, struct task_struct *p) {
-    if (p->comm[0] == 'c' || p->comm[0] == 'h') {
+    if (match_name(p->comm, "critical_2") || match_name(p->comm, "hog")) {
         s32 cpu = bpf_get_smp_processor_id();
-        bpf_printk("[SCX] CPU=%d EV=START COMM=%s", cpu, p->comm);
+        bpf_printk("[SCX] CPU=%d EV=START COMM=%s PID=%d", cpu, p->comm, p->pid);
     }
 }
 void SCX_OPS(simple_stopping, struct task_struct *p, bool runnable) {
-    if (p->comm[0] == 'c' || p->comm[0] == 'h') {
-        s32 cpu = bpf_get_smp_processor_id();
-        bpf_printk("[SCX] CPU=%d EV=STOP COMM=%s", cpu, p->comm);
+    s32 cpu = bpf_get_smp_processor_id();
+    if (match_name(p->comm, "critical_2") || match_name(p->comm, "hog")) {
+        if (!runnable) {
+            bpf_printk("[SCX] CPU=%d EV=SLEEP COMM=%s PID=%d", cpu, p->comm, p->pid);
+        } else {
+            bpf_printk("[SCX] CPU=%d EV=PREEMPT COMM=%s PID=%d", cpu, p->comm, p->pid);
+        }
     }
 }
 
