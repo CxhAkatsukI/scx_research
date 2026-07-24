@@ -70,7 +70,8 @@ The failure exists in the concurrent window between those serial orders.
 
 The first commit provided only the protocol model. Later local work adds a
 dry-run harness, topology planning, expanded trace fields, workload/preflight
-utilities, and local CLIs. This still does not provide real kernel evidence.
+utilities, local CLIs, and a VM-only rustland adapter scaffold. This still does
+not provide real kernel evidence.
 
 Implemented files:
 
@@ -86,6 +87,9 @@ Implemented files:
 - `src/bin/problem1_workload.rs`: CPU-bound workload with progress-file and
   stop-file.
 - `src/bin/problem1_vm_preflight.rs`: non-loading VM environment preflight.
+- `adapter/rustland_repro/`: VM-only `scx_rustland_core` scheduler scaffold.
+  It enables partial switching and implements the Problem 1 Q/C/D protocol in
+  Rust queues, with stdout event logging.
 - `traces/protocol_model_deterministic.json`: canonical model-only trace.
 - `traces/dry_run_deterministic.json`: canonical dry-run harness trace.
 - `adapter/README.md`: adapter boundary notes.
@@ -103,6 +107,7 @@ cargo run --bin problem1_harness -- report --synthetic-topology
 cargo run --bin problem1_harness -- stochastic --attempts 64 --synthetic-topology
 cargo run --bin problem1_workload -- --progress-file /tmp/problem1.progress --stop-file /tmp/problem1.stop --max-iters 1000000
 cargo run --bin problem1_vm_preflight
+cargo build --manifest-path adapter/rustland_repro/Cargo.toml
 ```
 
 Important: `protocol_model_deterministic.json` has
@@ -115,7 +120,8 @@ freeze the run contract and trace shape, but still are not kernel evidence.
 
 The following are still missing and should be implemented next:
 
-- A real sched-ext adapter that can be loaded and unloaded.
+- A VM-confirmed sched-ext adapter run that can be loaded and unloaded. The
+  rustland adapter scaffold exists but has not been VM-tested.
 - Partial switching so only experiment workload tasks enter SCHED_EXT.
 - BPF/kernel state capture for `Q`, `C`, `D`, pending enqueue state, selected
   target LLC, mask generation, and recovery status.
@@ -125,6 +131,8 @@ The following are still missing and should be implemented next:
 - Real adapter-backed versions of `report`, `deterministic`, and `stochastic`.
 - Cross-checking between protocol events and adapter/BPF observations. The trace
   fields exist, but adapter observations are currently `null`.
+- JSON output from `adapter/rustland_repro`; it currently prints protocol events
+  to stdout.
 - VM-facing instructions and a single command the user can run on CachyOS.
 
 ## Hard Safety Requirements
@@ -333,8 +341,9 @@ Context:
 - Remote: git@github.com:CxhAkatsukI/scx_research.git
 - Task folder: problem1_stranded_draining/
 - Out of scope: scx_simple
-- Current state: the repo has a pure Rust protocol model and a local dry-run
-  harness for Problem 1, but no real sched-ext adapter and no kernel evidence.
+- Current state: the repo has a pure Rust protocol model, a local dry-run
+  harness, workload/preflight utilities, and a VM-only rustland adapter scaffold
+  for Problem 1, but no VM-tested kernel evidence.
 
 First, read these files and the recent commit history:
 - problem1_stranded_draining/HANDOFF_FOR_CLAUDE.md

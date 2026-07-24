@@ -1,7 +1,13 @@
 # Adapter Boundary
 
-This directory will contain the thin sched-ext adapter for the Problem 1
+This directory contains the sched-ext adapter boundary for the Problem 1
 playground.
+
+The first real-adapter scaffold lives in `rustland_repro/`. It uses
+`scx_rustland_core`: the generic sched-ext BPF backend handles kernel
+attachment, while the Problem 1 queue/mask/drain protocol is implemented in the
+Rust scheduler. This matches the current milestone: write a simple Rust
+scheduler that exercises the buggy behavior before attempting proof work.
 
 The adapter must:
 
@@ -11,4 +17,38 @@ The adapter must:
 - forward protocol decisions instead of reimplementing scheduler semantics;
 - unload cleanly after every run.
 
-No real adapter code is present in the initial protocol commit.
+## VM-Only Build
+
+Do not run this on the local WSL environment. First run the non-loading
+preflight:
+
+```sh
+cd problem1_stranded_draining
+cargo run --bin problem1_vm_preflight
+```
+
+On a sched-ext capable VM, build the rustland adapter:
+
+```sh
+cd problem1_stranded_draining
+cargo build --manifest-path adapter/rustland_repro/Cargo.toml
+```
+
+The adapter enables partial switching through `scx_rustland_core`. The workload
+must opt into SCHED_EXT explicitly after the adapter is loaded:
+
+```sh
+cargo run --manifest-path adapter/rustland_repro/Cargo.toml -- \
+  --mode deterministic \
+  --recovery-delay-ms 100
+
+cargo run --bin problem1_workload -- \
+  --progress-file /tmp/problem1.progress \
+  --stop-file /tmp/problem1.stop \
+  --cpu-list 0,1 \
+  --sched-ext
+```
+
+The first scaffold prints the protocol events to stdout. The next adapter
+milestone should wire those events into the canonical JSON trace fields with
+`adapter_observed=true`.

@@ -116,6 +116,12 @@ Check a VM before any scheduler loading:
 cargo run --bin problem1_vm_preflight
 ```
 
+Build the VM-only rustland adapter scaffold:
+
+```sh
+cargo build --manifest-path adapter/rustland_repro/Cargo.toml
+```
+
 The checked-in `protocol_model_deterministic.json` is not kernel evidence. It is
 a compact trace of the abstract interleaving that the real adapter must later
 reproduce and cross-check against BPF/adapter state.
@@ -123,6 +129,11 @@ reproduce and cross-check against BPF/adapter state.
 The dry-run harness also emits `adapter_observed=false`. It is useful for
 freezing the run contract, trace fields, topology role names, and recovery
 events before attaching the real sched-ext adapter.
+
+The `adapter/rustland_repro` crate is the first real-adapter scaffold. It uses
+`scx_rustland_core` with partial switching enabled and keeps the Problem 1
+queue/mask/drain logic in Rust. It should be built and run only on a sched-ext
+capable VM.
 
 ## Safety Rules For The Real Adapter
 

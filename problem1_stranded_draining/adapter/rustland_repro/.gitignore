@@ -1,0 +1,6 @@
+/target/
+/intf.h
+/main.bpf.c
+/src/bpf.rs
+/src/bpf_intf.rs
+/src/bpf_skel.rs
