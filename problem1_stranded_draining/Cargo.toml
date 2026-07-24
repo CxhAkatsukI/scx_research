@@ -1,0 +1,12 @@
+[package]
+name = "problem1_stranded_draining"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "protocol_trace"
+path = "src/bin/protocol_trace.rs"

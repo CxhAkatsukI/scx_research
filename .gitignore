@@ -1,6 +1,7 @@
 # Scheduler build artifacts
 scx_simple/scheduler/simple.bpf.o
 scx_simple/scheduler/vmlinux.h
+problem1_stranded_draining/target/
 __pycache__/
 
 # Workload binaries
@@ -16,3 +17,8 @@ scx_simple/workloads/critical_2
 
 # Generated files
 *.json
+
+# Problem 1 keeps small canonical traces under version control. Bulk raw logs
+# should live elsewhere and remain untracked.
+!problem1_stranded_draining/traces/
+!problem1_stranded_draining/traces/*.json
