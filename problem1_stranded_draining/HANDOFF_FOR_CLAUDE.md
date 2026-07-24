@@ -89,7 +89,7 @@ Implemented files:
 - `src/bin/problem1_vm_preflight.rs`: non-loading VM environment preflight.
 - `adapter/rustland_repro/`: VM-only `scx_rustland_core` scheduler scaffold.
   It enables partial switching and implements the Problem 1 Q/C/D protocol in
-  Rust queues, with stdout event logging.
+  Rust queues, with stdout JSONL event logging.
 - `traces/protocol_model_deterministic.json`: canonical model-only trace.
 - `traces/dry_run_deterministic.json`: canonical dry-run harness trace.
 - `adapter/README.md`: adapter boundary notes.
@@ -131,8 +131,8 @@ The following are still missing and should be implemented next:
 - Real adapter-backed versions of `report`, `deterministic`, and `stochastic`.
 - Cross-checking between protocol events and adapter/BPF observations. The trace
   fields exist, but adapter observations are currently `null`.
-- JSON output from `adapter/rustland_repro`; it currently prints protocol events
-  to stdout.
+- A harness command that captures `adapter/rustland_repro` JSONL stdout,
+  workload progress samples, and cleanup checks into one evidence bundle.
 - VM-facing instructions and a single command the user can run on CachyOS.
 
 ## Hard Safety Requirements

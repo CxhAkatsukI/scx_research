@@ -127,15 +127,32 @@ impl<'a> Scheduler<'a> {
             );
         }
 
-        println!(
-            "topology target=CPU{}/LLC{} recovery=CPU{}/LLC{} control=CPU{}",
-            plan.target_cpu,
-            plan.target_llc,
-            plan.recovery_cpu,
-            plan.recovery_llc,
-            plan.control_cpu
+        emit_static_event(
+            opts.mode,
+            "topology_plan",
+            &plan,
+            None,
+            Some(plan.control_cpu),
+            None,
+            0,
+            0,
+            true,
+            false,
+            "selected real sysfs topology for the rustland adapter",
         );
-        println!("loading rustland backend with partial switching enabled");
+        emit_static_event(
+            opts.mode,
+            "load_requested",
+            &plan,
+            None,
+            Some(plan.control_cpu),
+            None,
+            0,
+            0,
+            true,
+            false,
+            "loading rustland backend with partial switching enabled",
+        );
 
         let open_opts = LibbpfOpts::default().into_bpf_open_opts();
         let bpf = BpfScheduler::init(
@@ -180,7 +197,7 @@ impl<'a> Scheduler<'a> {
         }
 
         let exit = self.bpf.shutdown_and_report()?;
-        println!("scheduler exit: {:?}", exit);
+        eprintln!("scheduler exit: {:?}", exit);
         Ok(())
     }
 
@@ -196,14 +213,12 @@ impl<'a> Scheduler<'a> {
 
         if !self.selected_once {
             self.selected_once = true;
-            println!(
-                "enqueue_select pid={} old_mask_generation={} target_llc={} q={} c={} d={}",
-                task.pid,
-                self.mask_generation,
-                self.plan.target_llc,
-                self.target_q.len(),
-                self.published_target_llc,
-                self.drain_target_llc
+            self.emit_event(
+                "enqueue_select",
+                Some(task.pid),
+                Some(self.plan.target_cpu),
+                Some(self.plan.target_llc),
+                "enqueue observed the old mask and selected the target LLC",
             );
 
             if self.opts.mode == RunMode::Deterministic {
@@ -233,9 +248,12 @@ impl<'a> Scheduler<'a> {
     fn publish_mask_without_target_llc(&mut self) {
         self.published_target_llc = false;
         self.mask_generation += 1;
-        println!(
-            "publish_mask generation={} target_llc={} c=false",
-            self.mask_generation, self.plan.target_llc
+        self.emit_event(
+            "publish_mask",
+            None,
+            Some(self.plan.control_cpu),
+            None,
+            "partition mask now excludes every CPU in the target LLC",
         );
     }
 
@@ -243,24 +261,24 @@ impl<'a> Scheduler<'a> {
         if !self.published_target_llc && !self.target_q.is_empty() {
             self.drain_target_llc = true;
         }
-        println!(
-            "update_observe_queue q={} c={} d={}",
-            self.target_q.len(),
-            self.published_target_llc,
-            self.drain_target_llc
+        self.emit_event(
+            "update_observe_queue",
+            None,
+            Some(self.plan.control_cpu),
+            None,
+            "updater enables D only when it observes Q>0",
         );
     }
 
     fn enqueue_commit_to_target_llc(&mut self, task: QueuedTask) {
         let pid = task.pid;
         self.target_q.push_back(task);
-        println!(
-            "enqueue_commit pid={} target_llc={} q={} c={} d={}",
-            pid,
-            self.plan.target_llc,
-            self.target_q.len(),
-            self.published_target_llc,
-            self.drain_target_llc
+        self.emit_event(
+            "enqueue_commit",
+            Some(pid),
+            Some(self.plan.target_cpu),
+            Some(self.plan.target_llc),
+            "enqueue committed the LLC selected before the mask update",
         );
     }
 
@@ -286,10 +304,12 @@ impl<'a> Scheduler<'a> {
 
         if self.invalid_since.is_none() {
             self.invalid_since = Some(Instant::now());
-            println!(
-                "stable_invalid_state q={} c=false d=false pending_enqueue=0 eligible_recovery_cpu={}",
-                self.target_q.len(),
-                self.plan.recovery_cpu
+            self.emit_event(
+                "stable_invalid_state",
+                self.target_q.front().map(|task| task.pid),
+                None,
+                None,
+                "both operations returned with Q>0, C=false, D=false, and the task remains eligible on recovery CPU",
             );
         }
 
@@ -297,10 +317,12 @@ impl<'a> Scheduler<'a> {
             since.elapsed() >= Duration::from_millis(self.opts.recovery_delay_ms)
         }) {
             self.drain_target_llc = true;
-            println!(
-                "recovery_drain_enabled target_llc={} q={}",
-                self.plan.target_llc,
-                self.target_q.len()
+            self.emit_event(
+                "recovery_drain_enabled",
+                self.target_q.front().map(|task| task.pid),
+                Some(self.plan.recovery_cpu),
+                None,
+                "bounded recovery enabled D for the orphan LLC queue",
             );
         }
 
@@ -319,7 +341,13 @@ impl<'a> Scheduler<'a> {
         let mut dispatched = DispatchedTask::new(&task);
         dispatched.cpu = self.plan.target_cpu as i32;
         dispatched.slice_ns = SLICE_NS;
-        println!("dispatch_target pid={} cpu={}", task.pid, dispatched.cpu);
+        self.emit_event(
+            "dispatch_target",
+            Some(task.pid),
+            Some(self.plan.target_cpu),
+            Some(self.plan.target_llc),
+            "dispatching on the target CPU while the target LLC is still published",
+        );
         self.bpf.dispatch_task(&dispatched)?;
         Ok(())
     }
@@ -328,8 +356,100 @@ impl<'a> Scheduler<'a> {
         let mut dispatched = DispatchedTask::new(&task);
         dispatched.cpu = self.plan.recovery_cpu as i32;
         dispatched.slice_ns = SLICE_NS;
-        println!("dispatch_recovery pid={} cpu={}", task.pid, dispatched.cpu);
+        self.emit_event(
+            "dispatch_recovery",
+            Some(task.pid),
+            Some(self.plan.recovery_cpu),
+            Some(self.plan.recovery_llc),
+            "dispatching through the recovery CPU after D becomes true",
+        );
         self.bpf.dispatch_task(&dispatched)?;
         Ok(())
     }
+
+    fn emit_event(
+        &self,
+        event: &str,
+        pid: Option<i32>,
+        cpu: Option<u16>,
+        selected_target_llc: Option<u16>,
+        note: &str,
+    ) {
+        emit_static_event(
+            self.opts.mode,
+            event,
+            &self.plan,
+            pid,
+            cpu,
+            selected_target_llc,
+            self.mask_generation,
+            self.target_q.len(),
+            self.published_target_llc,
+            self.drain_target_llc,
+            note,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_static_event(
+    mode: RunMode,
+    event: &str,
+    plan: &TopologyPlan,
+    pid: Option<i32>,
+    cpu: Option<u16>,
+    selected_target_llc: Option<u16>,
+    mask_generation: u64,
+    q: usize,
+    c: bool,
+    d: bool,
+    note: &str,
+) {
+    println!(
+        "{{\"source\":\"rustland_adapter\",\"adapter_observed\":true,\"mode\":\"{}\",\"event\":\"{}\",\"pid\":{},\"cpu\":{},\"partition\":0,\"llc\":{},\"selected_target_llc\":{},\"mask_generation\":{},\"q\":{},\"c\":{},\"d\":{},\"pending_enqueues\":0,\"recovery_cpu\":{},\"note\":\"{}\"}}",
+        adapter_mode(mode),
+        escape_json(event),
+        opt_i32(pid),
+        opt_u16(cpu),
+        plan.target_llc,
+        opt_u16(selected_target_llc),
+        mask_generation,
+        q,
+        c,
+        d,
+        plan.recovery_cpu,
+        escape_json(note)
+    );
+}
+
+fn adapter_mode(mode: RunMode) -> &'static str {
+    match mode {
+        RunMode::Report => "report_adapter",
+        RunMode::Deterministic => "deterministic_adapter",
+        RunMode::Stochastic => "stochastic_adapter",
+    }
+}
+
+fn opt_i32(value: Option<i32>) -> String {
+    value.map_or_else(|| "null".to_string(), |value| value.to_string())
+}
+
+fn opt_u16(value: Option<u16>) -> String {
+    value.map_or_else(|| "null".to_string(), |value| value.to_string())
+}
+
+fn escape_json(value: &str) -> String {
+    let mut escaped = String::new();
+    for c in value.chars() {
+        match c {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            c if c.is_control() => escaped.push_str(&format!("\\u{:04x}", c as u32)),
+            c => escaped.push(c),
+        }
+    }
+    escaped
 }

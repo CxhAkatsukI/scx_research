@@ -49,6 +49,7 @@ cargo run --bin problem1_workload -- \
   --sched-ext
 ```
 
-The first scaffold prints the protocol events to stdout. The next adapter
-milestone should wire those events into the canonical JSON trace fields with
-`adapter_observed=true`.
+The scaffold prints JSONL protocol events to stdout with
+`adapter_observed=true`; non-event exit diagnostics go to stderr. The next
+adapter milestone should add a harness command that captures those JSONL events
+beside workload progress samples and cleanup checks.
