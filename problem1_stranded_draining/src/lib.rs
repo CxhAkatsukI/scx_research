@@ -1,4 +1,5 @@
 pub mod harness;
+pub mod linux;
 pub mod protocol;
 pub mod topology;
 pub mod trace;

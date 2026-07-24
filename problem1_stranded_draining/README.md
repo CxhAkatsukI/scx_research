@@ -101,6 +101,21 @@ cargo run --bin problem1_harness -- report --synthetic-topology
 cargo run --bin problem1_harness -- stochastic --attempts 64 --synthetic-topology
 ```
 
+Run the CPU-bound workload locally without sched-ext:
+
+```sh
+cargo run --bin problem1_workload -- \
+  --progress-file /tmp/problem1.progress \
+  --stop-file /tmp/problem1.stop \
+  --max-iters 1000000
+```
+
+Check a VM before any scheduler loading:
+
+```sh
+cargo run --bin problem1_vm_preflight
+```
+
 The checked-in `protocol_model_deterministic.json` is not kernel evidence. It is
 a compact trace of the abstract interleaving that the real adapter must later
 reproduce and cross-check against BPF/adapter state.
@@ -116,6 +131,8 @@ events before attaching the real sched-ext adapter.
 - Never include every vCPU in the experiment.
 - Use CPU0/LLC0 as the orphaned queue target, CPU1/LLC1 as the eligible recovery
   CPU, CPU2 for harness/control activity, and reserve the remaining CPUs.
+- `problem1_workload --sched-ext` is only for the VM stage after the adapter is
+  ready and partial switching is enabled.
 - Deterministic gates may only hold a real legal window for a bounded time. They
   must not directly write `Q`, `C`, or `D`.
 - Random stress may report a hit rate, but a random hit is not required for

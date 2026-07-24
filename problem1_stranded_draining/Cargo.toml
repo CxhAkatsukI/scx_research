@@ -7,6 +7,9 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
+[dependencies]
+libc = "0.2"
+
 [[bin]]
 name = "protocol_trace"
 path = "src/bin/protocol_trace.rs"
@@ -14,3 +17,11 @@ path = "src/bin/protocol_trace.rs"
 [[bin]]
 name = "problem1_harness"
 path = "src/bin/problem1_harness.rs"
+
+[[bin]]
+name = "problem1_workload"
+path = "src/bin/problem1_workload.rs"
+
+[[bin]]
+name = "problem1_vm_preflight"
+path = "src/bin/problem1_vm_preflight.rs"

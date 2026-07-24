@@ -16,6 +16,20 @@ cargo run --bin problem1_harness -- stochastic --attempts 64 --synthetic-topolog
 
 All dry-run events keep `adapter_observed=false`.
 
+The crate also includes two VM-prep binaries:
+
+```sh
+cargo run --bin problem1_workload -- \
+  --progress-file /tmp/problem1.progress \
+  --stop-file /tmp/problem1.stop \
+  --max-iters 1000000
+
+cargo run --bin problem1_vm_preflight
+```
+
+`problem1_workload --sched-ext` is intentionally opt-in and should only be used
+after the real adapter enables partial switching.
+
 The first real-load milestone must prove that:
 
 - `/sys/kernel/sched_ext/state` becomes enabled during the experiment;

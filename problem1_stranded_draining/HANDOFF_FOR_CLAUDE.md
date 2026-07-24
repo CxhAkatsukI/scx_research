@@ -69,8 +69,8 @@ The failure exists in the concurrent window between those serial orders.
 ## Current Implementation
 
 The first commit provided only the protocol model. Later local work adds a
-dry-run harness, topology planning, expanded trace fields, and a CLI. This
-still does not provide real kernel evidence.
+dry-run harness, topology planning, expanded trace fields, workload/preflight
+utilities, and local CLIs. This still does not provide real kernel evidence.
 
 Implemented files:
 
@@ -80,7 +80,12 @@ Implemented files:
 - `src/topology.rs`: sysfs/synthetic topology planning for target, recovery,
   and control CPUs.
 - `src/harness.rs`: local dry-run report, deterministic, and stochastic modes.
+- `src/linux.rs`: small Linux helpers for affinity, SCHED_EXT opt-in, uid, and
+  PATH checks.
 - `src/bin/problem1_harness.rs`: local dry-run harness CLI.
+- `src/bin/problem1_workload.rs`: CPU-bound workload with progress-file and
+  stop-file.
+- `src/bin/problem1_vm_preflight.rs`: non-loading VM environment preflight.
 - `traces/protocol_model_deterministic.json`: canonical model-only trace.
 - `traces/dry_run_deterministic.json`: canonical dry-run harness trace.
 - `adapter/README.md`: adapter boundary notes.
@@ -96,6 +101,8 @@ cargo run --bin protocol_trace -- --write traces/protocol_model_deterministic.js
 cargo run --bin problem1_harness -- deterministic --synthetic-topology
 cargo run --bin problem1_harness -- report --synthetic-topology
 cargo run --bin problem1_harness -- stochastic --attempts 64 --synthetic-topology
+cargo run --bin problem1_workload -- --progress-file /tmp/problem1.progress --stop-file /tmp/problem1.stop --max-iters 1000000
+cargo run --bin problem1_vm_preflight
 ```
 
 Important: `protocol_model_deterministic.json` has
@@ -113,7 +120,8 @@ The following are still missing and should be implemented next:
 - BPF/kernel state capture for `Q`, `C`, `D`, pending enqueue state, selected
   target LLC, mask generation, and recovery status.
 - Real workload creation, affinity control, progress counter, scheduler unload,
-  and health checks in the VM.
+  and health checks in the VM. Local workload/preflight utilities exist, but
+  have not yet been integrated with a loading adapter.
 - Real adapter-backed versions of `report`, `deterministic`, and `stochastic`.
 - Cross-checking between protocol events and adapter/BPF observations. The trace
   fields exist, but adapter observations are currently `null`.
