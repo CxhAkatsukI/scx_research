@@ -2,9 +2,15 @@ use std::fs;
 use std::path::Path;
 
 use problem1_stranded_draining::linux::{effective_uid, find_in_path};
-use problem1_stranded_draining::topology::{discover_from_sysfs, plan_from_topology};
+use problem1_stranded_draining::topology::{discover_from_sysfs, plan_from_topology, TopologyPlan};
 
 fn main() {
+    let export_env = std::env::args().skip(1).any(|arg| arg == "--export-env");
+    if export_env {
+        export_plan_env();
+        return;
+    }
+
     let mut checks = Vec::new();
 
     checks.push(check_root());
@@ -82,10 +88,7 @@ fn check_tool(tool: &'static str) -> Check {
 }
 
 fn check_topology_plan() -> Check {
-    match discover_from_sysfs(Path::new("/sys/devices/system/cpu")).and_then(|topology| {
-        plan_from_topology(topology)
-            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
-    }) {
+    match read_topology_plan() {
         Ok(plan) => Check::ok(
             "topology plan",
             format!(
@@ -99,6 +102,35 @@ fn check_topology_plan() -> Check {
         ),
         Err(error) => Check::err("topology plan", error.to_string()),
     }
+}
+
+fn export_plan_env() {
+    match read_topology_plan() {
+        Ok(plan) => print_plan_env(&plan),
+        Err(error) => {
+            eprintln!("cannot export topology plan: {error}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn read_topology_plan() -> std::io::Result<TopologyPlan> {
+    discover_from_sysfs(Path::new("/sys/devices/system/cpu")).and_then(|topology| {
+        plan_from_topology(topology)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    })
+}
+
+fn print_plan_env(plan: &TopologyPlan) {
+    println!("PROBLEM1_TARGET_CPU={}", plan.target_cpu);
+    println!("PROBLEM1_TARGET_LLC={}", plan.target_llc);
+    println!("PROBLEM1_RECOVERY_CPU={}", plan.recovery_cpu);
+    println!("PROBLEM1_RECOVERY_LLC={}", plan.recovery_llc);
+    println!("PROBLEM1_CONTROL_CPU={}", plan.control_cpu);
+    println!(
+        "PROBLEM1_WORKLOAD_CPU_LIST={},{}",
+        plan.target_cpu, plan.recovery_cpu
+    );
 }
 
 impl Check {

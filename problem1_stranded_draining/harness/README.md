@@ -30,6 +30,17 @@ cargo run --bin problem1_vm_preflight
 `problem1_workload --sched-ext` is intentionally opt-in and should only be used
 after the real adapter enables partial switching.
 
+The first VM-side wrapper is:
+
+```sh
+sudo harness/run_rustland_vm.sh deterministic
+```
+
+It runs preflight, exports the detected CPU plan, builds the workload and
+rustland adapter, captures adapter JSONL, samples workload progress, and performs
+bounded cleanup through a stop file and `SIGINT` to the adapter. It is not run
+locally.
+
 The first real-load milestone must prove that:
 
 - `/sys/kernel/sched_ext/state` becomes enabled during the experiment;

@@ -122,6 +122,12 @@ Build the VM-only rustland adapter scaffold:
 cargo build --manifest-path adapter/rustland_repro/Cargo.toml
 ```
 
+Run the VM-only rustland evidence harness:
+
+```sh
+sudo harness/run_rustland_vm.sh deterministic
+```
+
 The checked-in `protocol_model_deterministic.json` is not kernel evidence. It is
 a compact trace of the abstract interleaving that the real adapter must later
 reproduce and cross-check against BPF/adapter state.
@@ -134,6 +140,10 @@ The `adapter/rustland_repro` crate is the first real-adapter scaffold. It uses
 `scx_rustland_core` with partial switching enabled and keeps the Problem 1
 queue/mask/drain logic in Rust. It should be built and run only on a sched-ext
 capable VM.
+
+`harness/run_rustland_vm.sh` captures adapter JSONL, workload stderr, and a
+workload progress counter under `traces/vm_rustland_*`. It still needs VM
+execution before its output can be treated as kernel evidence.
 
 ## Safety Rules For The Real Adapter
 
