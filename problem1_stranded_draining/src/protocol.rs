@@ -73,22 +73,66 @@ impl ProtocolState {
                 id: CPU2,
                 llc: LLC1,
             },
-        ]
-        .into_iter()
-        .map(|cpu| (cpu.id, cpu))
-        .collect();
+        ];
+
+        Self::new(
+            PARTITION_A,
+            topology,
+            [CPU0, CPU1],
+            [Task::new(100, [CPU0, CPU1])],
+        )
+    }
+
+    pub fn new(
+        partition_id: PartitionId,
+        topology: impl IntoIterator<Item = Cpu>,
+        published_cpus: impl IntoIterator<Item = CpuId>,
+        tasks: impl IntoIterator<Item = Task>,
+    ) -> Self {
+        let topology = topology
+            .into_iter()
+            .map(|cpu| (cpu.id, cpu))
+            .collect::<BTreeMap<_, _>>();
+
+        assert!(
+            !topology.is_empty(),
+            "ProtocolState requires at least one CPU"
+        );
+
+        let published_cpus = published_cpus.into_iter().collect::<BTreeSet<_>>();
+        for cpu_id in &published_cpus {
+            assert!(
+                topology.contains_key(cpu_id),
+                "published CPU must exist in topology"
+            );
+        }
 
         let mut queues = BTreeMap::new();
-        queues.insert(LLC0, VecDeque::new());
-        queues.insert(LLC1, VecDeque::new());
+        for cpu in topology.values() {
+            queues.entry(cpu.llc).or_insert_with(VecDeque::new);
+        }
 
-        let mut tasks = BTreeMap::new();
-        tasks.insert(100, Task::new(100, [CPU0, CPU1]));
+        let tasks = tasks
+            .into_iter()
+            .map(|task| {
+                assert!(
+                    !task.allowed_cpus.is_empty(),
+                    "task must be eligible for at least one CPU"
+                );
+                for cpu_id in &task.allowed_cpus {
+                    assert!(
+                        topology.contains_key(cpu_id),
+                        "task affinity CPU must exist in topology"
+                    );
+                }
+                (task.id, task)
+            })
+            .collect();
 
         Self {
-            partition_id: PARTITION_A,
+            partition_id,
             topology,
-            published_cpus: [CPU0, CPU1].into_iter().collect(),
+            published_cpus,
             mask_generation: 0,
             queues,
             draining: BTreeSet::new(),
@@ -108,6 +152,26 @@ impl ProtocolState {
 
     pub fn task_progress(&self, task_id: TaskId) -> u64 {
         self.tasks.get(&task_id).map_or(0, |task| task.progress)
+    }
+
+    pub fn record_task_progress(&mut self, task_id: TaskId, delta: u64) {
+        let task = self.tasks.get_mut(&task_id).expect("task must exist");
+        task.progress += delta;
+    }
+
+    pub fn published_cpus(&self) -> Vec<CpuId> {
+        self.published_cpus.iter().copied().collect()
+    }
+
+    pub fn task_allowed_cpus(&self, task_id: TaskId) -> Vec<CpuId> {
+        self.tasks
+            .get(&task_id)
+            .map(|task| task.allowed_cpus.iter().copied().collect())
+            .unwrap_or_default()
+    }
+
+    pub fn llc_for_cpu(&self, cpu_id: CpuId) -> Option<LlcId> {
+        self.topology.get(&cpu_id).map(|cpu| cpu.llc)
     }
 
     pub fn has_cpu_in_llc(&self, llc: LlcId) -> bool {

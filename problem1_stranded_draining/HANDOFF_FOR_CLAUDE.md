@@ -12,8 +12,9 @@ pure model artifact.
 - Primary repo: `~/Documents/scx_research`
 - Remote: `git@github.com:CxhAkatsukI/scx_research.git`
 - Active branch: `codex/problem1-stranded-draining-repro`
-- Latest known commit at handoff: `2330313 feat(problem1): add stranded draining protocol playground`
-- Working tree at handoff: clean before this document was added
+- Latest known baseline before local harness work: `f33b8f4 docs(problem1): add Claude handoff`
+- Working tree at this document's original handoff point: clean before the
+  handoff document was added
 - Out of scope: `scx_simple`
 - Current folder for this task: `problem1_stranded_draining/`
 
@@ -67,14 +68,21 @@ The failure exists in the concurrent window between those serial orders.
 
 ## Current Implementation
 
-The first commit provides only the protocol model.
+The first commit provided only the protocol model. Later local work adds a
+dry-run harness, topology planning, expanded trace fields, and a CLI. This
+still does not provide real kernel evidence.
 
 Implemented files:
 
 - `src/protocol.rs`: abstract Rust protocol state and transition model.
 - `src/trace.rs`: JSON trace event structure and model trace generator.
 - `src/bin/protocol_trace.rs`: CLI for printing or writing the model trace.
+- `src/topology.rs`: sysfs/synthetic topology planning for target, recovery,
+  and control CPUs.
+- `src/harness.rs`: local dry-run report, deterministic, and stochastic modes.
+- `src/bin/problem1_harness.rs`: local dry-run harness CLI.
 - `traces/protocol_model_deterministic.json`: canonical model-only trace.
+- `traces/dry_run_deterministic.json`: canonical dry-run harness trace.
 - `adapter/README.md`: adapter boundary notes.
 - `harness/README.md`: harness boundary notes.
 - `README.md`: overview, invariant, safety rules, and local checks.
@@ -85,10 +93,16 @@ Current local checks:
 cd ~/Documents/scx_research/problem1_stranded_draining
 cargo test
 cargo run --bin protocol_trace -- --write traces/protocol_model_deterministic.json
+cargo run --bin problem1_harness -- deterministic --synthetic-topology
+cargo run --bin problem1_harness -- report --synthetic-topology
+cargo run --bin problem1_harness -- stochastic --attempts 64 --synthetic-topology
 ```
 
 Important: `protocol_model_deterministic.json` has
 `adapter_observed=false`. It is not kernel evidence.
+
+Important: dry-run harness traces also have `adapter_observed=false`. They
+freeze the run contract and trace shape, but still are not kernel evidence.
 
 ## What Is Not Done Yet
 
@@ -98,11 +112,11 @@ The following are still missing and should be implemented next:
 - Partial switching so only experiment workload tasks enter SCHED_EXT.
 - BPF/kernel state capture for `Q`, `C`, `D`, pending enqueue state, selected
   target LLC, mask generation, and recovery status.
-- A Rust harness that creates the workload, applies affinity, triggers the mask
-  update, controls deterministic gates, records traces, recovers tasks, unloads
-  the scheduler, and checks system health.
-- Three run modes: `report`, `deterministic`, and `stochastic`.
-- Cross-checking between protocol events and adapter/BPF observations.
+- Real workload creation, affinity control, progress counter, scheduler unload,
+  and health checks in the VM.
+- Real adapter-backed versions of `report`, `deterministic`, and `stochastic`.
+- Cross-checking between protocol events and adapter/BPF observations. The trace
+  fields exist, but adapter observations are currently `null`.
 - VM-facing instructions and a single command the user can run on CachyOS.
 
 ## Hard Safety Requirements
@@ -311,8 +325,8 @@ Context:
 - Remote: git@github.com:CxhAkatsukI/scx_research.git
 - Task folder: problem1_stranded_draining/
 - Out of scope: scx_simple
-- Current state: the repo has a pure Rust protocol model for Problem 1, but no
-  real sched-ext adapter, no real kernel evidence, and no harness yet.
+- Current state: the repo has a pure Rust protocol model and a local dry-run
+  harness for Problem 1, but no real sched-ext adapter and no kernel evidence.
 
 First, read these files and the recent commit history:
 - problem1_stranded_draining/HANDOFF_FOR_CLAUDE.md
@@ -342,8 +356,8 @@ Your job:
 Continue implementation locally. Build the missing real playground pieces:
 - a loadable/unloadable sched-ext adapter;
 - partial switching only for experiment workload tasks;
-- a Rust harness with topology detection, workload affinity, progress counter,
-  deterministic gates, stochastic stress, recovery, cleanup, and health checks;
+- real VM-backed workload affinity, progress counter, deterministic gates,
+  stochastic stress, recovery, cleanup, and health checks;
 - report, deterministic, and stochastic modes;
 - JSON traces that cross-check protocol state against adapter/BPF state;
 - README instructions that the user can run on a CachyOS VM.

@@ -1,4 +1,6 @@
+pub mod harness;
 pub mod protocol;
+pub mod topology;
 pub mod trace;
 
 pub use protocol::{

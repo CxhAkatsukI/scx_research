@@ -7,7 +7,9 @@ any CPU in that LLC, while the drain bit for that queue is still disabled.
 The playground is intentionally self-contained. It is not `scx_simple`, and it
 does not reuse the old simulator. The first stage is a Rust protocol model that
 captures the interleaving we want to exercise before we attach it to a real
-sched-ext adapter.
+sched-ext adapter. The second local stage adds a dry-run harness for topology
+planning, run modes, recovery events, and trace shape; it still does not load a
+kernel scheduler.
 
 ## Stage 1 Goal
 
@@ -23,9 +25,10 @@ Produce a real, reproducible Problem 1 trace with these hard facts:
 5. The harness recovers the task, unloads the scheduler, verifies sched-ext is
    disabled, and verifies SSH/system health.
 
-This initial commit covers the protocol model and local tests. Kernel loading,
-BPF state capture, workload evidence, and health checks are intentionally left
-for the adapter and harness milestones.
+The current local implementation covers the protocol model, a dry-run harness,
+JSON trace generation, and local tests. Kernel loading, BPF state capture,
+workload evidence, and real health checks are intentionally left for the adapter
+milestones.
 
 ## Invariant
 
@@ -59,8 +62,8 @@ appears in the gap between those two serial orders.
 ```text
 problem1_stranded_draining/
 ├── adapter/      # Future sched-ext/BPF integration boundary.
-├── harness/      # Future workload, mask updater, gates, and health checks.
-├── src/          # Rust protocol model and trace generator.
+├── harness/      # Harness boundary notes and future VM-facing scripts.
+├── src/          # Rust protocol model, dry-run harness, and trace generator.
 └── traces/       # Small canonical traces. Bulk logs stay untracked.
 ```
 
@@ -90,9 +93,21 @@ Generate the model-only trace:
 cargo run --bin protocol_trace -- --write traces/protocol_model_deterministic.json
 ```
 
+Run the local dry-run harness:
+
+```sh
+cargo run --bin problem1_harness -- deterministic --synthetic-topology
+cargo run --bin problem1_harness -- report --synthetic-topology
+cargo run --bin problem1_harness -- stochastic --attempts 64 --synthetic-topology
+```
+
 The checked-in `protocol_model_deterministic.json` is not kernel evidence. It is
 a compact trace of the abstract interleaving that the real adapter must later
 reproduce and cross-check against BPF/adapter state.
+
+The dry-run harness also emits `adapter_observed=false`. It is useful for
+freezing the run contract, trace fields, topology role names, and recovery
+events before attaching the real sched-ext adapter.
 
 ## Safety Rules For The Real Adapter
 

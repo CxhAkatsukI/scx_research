@@ -10,3 +10,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "protocol_trace"
 path = "src/bin/protocol_trace.rs"
+
+[[bin]]
+name = "problem1_harness"
+path = "src/bin/problem1_harness.rs"
