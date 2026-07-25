@@ -122,24 +122,34 @@ Important: `protocol_model_deterministic.json` has
 Important: dry-run harness traces also have `adapter_observed=false`. They
 freeze the run contract and trace shape, but still are not kernel evidence.
 
+## Current VM Evidence
+
+The first real deterministic VM trace has been produced on the CachyOS test
+host:
+
+```text
+problem1_stranded_draining/traces/vm_rustland_deterministic_20260724_224952/
+```
+
+The clean adapter JSONL contains the expected adapter-observed sequence:
+`workload_matched`, `enqueue_select`, `publish_mask`, `update_observe_queue`,
+`enqueue_commit`, `stable_invalid_state`, `recovery_drain_enabled`,
+`dispatch_recovery`, and `adapter_summary_recovered`.
+
+The workload stderr/live files show the workload opted into `SCHED_EXT`
+(`policy=7`, `ext.enabled=1`), and the harness ended with
+`sched_ext_state_after=disabled`.
+
 ## What Is Not Done Yet
 
 The following are still missing and should be implemented next:
 
-- A VM-confirmed sched-ext adapter run that can be loaded and unloaded. The
-  rustland adapter scaffold exists but has not been VM-tested.
-- Partial switching so only experiment workload tasks enter SCHED_EXT.
-- BPF/kernel state capture for `Q`, `C`, `D`, pending enqueue state, selected
-  target LLC, mask generation, and recovery status.
-- Real workload creation, affinity control, progress counter, scheduler unload,
-  and health checks in the VM. Local workload/preflight utilities exist, but
-  have not yet been integrated with a loading adapter.
-- Real adapter-backed versions of `report`, `deterministic`, and `stochastic`.
-- Cross-checking between protocol events and adapter/BPF observations. The trace
-  fields exist, but adapter observations are currently `null`.
-- VM execution of `harness/run_rustland_vm.sh` and review of the resulting
-  evidence bundle.
-- VM-facing instructions and a single command the user can run on CachyOS.
+- Promote the deterministic VM evidence into a stable documented acceptance
+  test instead of relying on one manually reviewed trace directory.
+- Add real adapter-backed `report` and `stochastic` modes.
+- Cross-check protocol fields against more direct BPF/kernel observations where
+  possible, especially pending enqueue state and queue length.
+- Add stronger run instructions for the user-facing CachyOS workflow.
 
 ## Hard Safety Requirements
 
