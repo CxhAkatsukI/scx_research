@@ -139,8 +139,10 @@ events before attaching the real sched-ext adapter.
 The `adapter/rustland_repro` crate is the first real-adapter scaffold. It uses
 `scx_rustland_core` with partial switching enabled and keeps the Problem 1
 queue/mask/drain logic in Rust. Its test slice is intentionally tiny so the
-opt-in workload reaches the userspace enqueue path quickly. It should be built
-and run only on a sched-ext capable VM.
+opt-in workload reaches the userspace enqueue path quickly. Its build script
+also disables rustland's queued-wakeup optimization so wakeups are not hidden
+behind the kernel's local wakeup fast path. It should be built and run only on a
+sched-ext capable VM.
 
 `harness/run_rustland_vm.sh` captures adapter JSONL, workload stderr, live
 `ps`/`chrt`/`proc` state, adapter and workload PIDs, and a workload progress
