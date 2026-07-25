@@ -23,7 +23,7 @@ use problem1_stranded_draining::harness::RunMode;
 use problem1_stranded_draining::topology::{discover_or_example, TopologyPlan};
 use scx_utils::libbpf_clap_opts::LibbpfOpts;
 
-const SLICE_NS: u64 = 5_000_000;
+const SLICE_NS: u64 = 50_000;
 const SCHED_NAME: &str = "p1_strand";
 const WORKLOAD_COMM: &str = "problem1_workload";
 const WORKLOAD_COMM_TRUNCATED: &str = "problem1_workloa";
