@@ -25,6 +25,8 @@ use scx_utils::libbpf_clap_opts::LibbpfOpts;
 
 const SLICE_NS: u64 = 5_000_000;
 const SCHED_NAME: &str = "p1_strand";
+const WORKLOAD_COMM: &str = "problem1_workload";
+const WORKLOAD_COMM_TRUNCATED: &str = "problem1_workloa";
 
 fn main() -> Result<()> {
     let opts = Opts::parse(std::env::args().skip(1))?;
@@ -213,6 +215,14 @@ impl<'a> Scheduler<'a> {
 
         if !self.selected_once {
             self.selected_once = true;
+            let note = format!("matched workload pid={} comm={}", task.pid, task.comm_str());
+            self.emit_event(
+                "workload_matched",
+                Some(task.pid),
+                Some(self.plan.target_cpu),
+                Some(self.plan.target_llc),
+                &note,
+            );
             self.emit_event(
                 "enqueue_select",
                 Some(task.pid),
@@ -242,7 +252,10 @@ impl<'a> Scheduler<'a> {
             return task.pid == pid;
         }
 
-        task.comm_str().contains("problem1_workload")
+        let comm = task.comm_str();
+        comm == WORKLOAD_COMM
+            || comm == WORKLOAD_COMM_TRUNCATED
+            || comm.starts_with(WORKLOAD_COMM_TRUNCATED)
     }
 
     fn publish_mask_without_target_llc(&mut self) {
