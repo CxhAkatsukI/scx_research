@@ -26,7 +26,7 @@ use scx_utils::libbpf_clap_opts::LibbpfOpts;
 const SLICE_NS: u64 = 50_000;
 const SCHED_NAME: &str = "p1_strand";
 const WORKLOAD_COMM: &str = "problem1_workload";
-const WORKLOAD_COMM_TRUNCATED: &str = "problem1_workloa";
+const WORKLOAD_COMM_TRUNCATED: &str = "problem1_worklo";
 
 fn main() -> Result<()> {
     let opts = Opts::parse(std::env::args().skip(1))?;
