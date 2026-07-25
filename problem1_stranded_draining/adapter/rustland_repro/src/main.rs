@@ -185,9 +185,28 @@ impl<'a> Scheduler<'a> {
     }
 
     fn run(&mut self) -> Result<()> {
+        let mut reported_dequeue_error = false;
+
         while !self.bpf.exited() && self.started_at.elapsed() < self.max_runtime() {
-            while let Ok(Some(task)) = self.bpf.dequeue_task() {
-                self.handle_queued_task(task)?;
+            loop {
+                match self.bpf.dequeue_task() {
+                    Ok(Some(task)) => self.handle_queued_task(task)?,
+                    Ok(None) => break,
+                    Err(errno) => {
+                        if !reported_dequeue_error {
+                            let note = format!("dequeue_task returned errno={errno}");
+                            self.emit_event(
+                                "dequeue_error",
+                                None,
+                                Some(self.plan.control_cpu),
+                                None,
+                                &note,
+                            );
+                            reported_dequeue_error = true;
+                        }
+                        break;
+                    }
+                }
             }
 
             self.dispatch_ready_tasks()?;
