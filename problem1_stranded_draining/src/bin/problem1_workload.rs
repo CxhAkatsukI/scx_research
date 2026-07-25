@@ -1,5 +1,6 @@
 use std::env;
-use std::io;
+use std::fs::OpenOptions;
+use std::io::{self, Read};
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -36,6 +37,9 @@ fn main() -> io::Result<()> {
             SCHED_EXT,
             format_cpu_list(&affinity),
         );
+        if let Some(gate_fifo) = &cli.gate_fifo {
+            wait_for_gate(gate_fifo)?;
+        }
         if cli.initial_sleep_ms > 0 {
             thread::sleep(Duration::from_millis(cli.initial_sleep_ms));
         }
@@ -70,6 +74,7 @@ struct Cli {
     stop_file: PathBuf,
     cpu_list: Option<Vec<u16>>,
     sched_ext: bool,
+    gate_fifo: Option<PathBuf>,
     initial_sleep_ms: u64,
     yield_after_opt_in: bool,
     write_every: u64,
@@ -82,6 +87,7 @@ impl Cli {
         let mut stop_file = None;
         let mut cpu_list = None;
         let mut sched_ext = false;
+        let mut gate_fifo = None;
         let mut initial_sleep_ms = 0;
         let mut yield_after_opt_in = false;
         let mut write_every = 1_000_000;
@@ -102,6 +108,9 @@ impl Cli {
                 }
                 "--sched-ext" => {
                     sched_ext = true;
+                }
+                "--gate-fifo" => {
+                    gate_fifo = Some(PathBuf::from(next_value(&mut args, "--gate-fifo")?));
                 }
                 "--initial-sleep-ms" => {
                     let value = next_value(&mut args, "--initial-sleep-ms")?;
@@ -133,6 +142,7 @@ impl Cli {
             stop_file: stop_file.ok_or_else(|| "--stop-file is required".to_string())?,
             cpu_list,
             sched_ext,
+            gate_fifo,
             initial_sleep_ms,
             yield_after_opt_in,
             write_every,
@@ -141,7 +151,7 @@ impl Cli {
     }
 
     fn usage() -> &'static str {
-        "usage: problem1_workload --progress-file PATH --stop-file PATH [--cpu-list LIST] [--sched-ext] [--initial-sleep-ms N] [--yield-after-opt-in] [--write-every N] [--max-iters N]"
+        "usage: problem1_workload --progress-file PATH --stop-file PATH [--cpu-list LIST] [--sched-ext] [--gate-fifo PATH] [--initial-sleep-ms N] [--yield-after-opt-in] [--write-every N] [--max-iters N]"
     }
 }
 
@@ -166,4 +176,10 @@ fn format_cpu_list(cpus: &[u16]) -> String {
         .map(u16::to_string)
         .collect::<Vec<_>>()
         .join(",")
+}
+
+fn wait_for_gate(path: &PathBuf) -> io::Result<()> {
+    let mut fifo = OpenOptions::new().read(true).open(path)?;
+    let mut byte = [0_u8; 1];
+    fifo.read_exact(&mut byte)
 }
