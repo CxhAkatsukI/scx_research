@@ -3,7 +3,8 @@ use std::io;
 use std::path::PathBuf;
 
 use problem1_stranded_draining::linux::{
-    atomic_write, set_current_affinity, set_current_sched_ext,
+    atomic_write, current_affinity, current_scheduler_policy, current_thread_id,
+    set_current_affinity, set_current_sched_ext, SCHED_EXT,
 };
 use problem1_stranded_draining::topology::parse_cpu_list;
 
@@ -23,6 +24,16 @@ fn main() -> io::Result<()> {
 
     if cli.sched_ext {
         set_current_sched_ext()?;
+        let policy = current_scheduler_policy()?;
+        let affinity = current_affinity()?;
+        eprintln!(
+            "problem1_workload_ready pid={} tid={} policy={} sched_ext_policy={} affinity={}",
+            std::process::id(),
+            current_thread_id(),
+            policy,
+            SCHED_EXT,
+            format_cpu_list(&affinity),
+        );
     }
 
     let mut counter = 0_u64;
@@ -125,4 +136,11 @@ fn parse_nonzero_u64(flag: &str, value: &str) -> Result<u64, String> {
     } else {
         Ok(parsed)
     }
+}
+
+fn format_cpu_list(cpus: &[u16]) -> String {
+    cpus.iter()
+        .map(u16::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
 }

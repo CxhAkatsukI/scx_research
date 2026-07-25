@@ -198,6 +198,16 @@ impl<'a> Scheduler<'a> {
             }
         }
 
+        let exited = self.bpf.exited();
+        let event = if self.recovered {
+            "adapter_summary_recovered"
+        } else if exited {
+            "adapter_summary_exited"
+        } else {
+            "adapter_summary_timeout"
+        };
+        self.emit_summary(event);
+
         let exit = self.bpf.shutdown_and_report()?;
         eprintln!("scheduler exit: {:?}", exit);
         Ok(())
@@ -401,6 +411,35 @@ impl<'a> Scheduler<'a> {
             self.drain_target_llc,
             note,
         );
+    }
+
+    fn emit_summary(&mut self, event: &str) {
+        let elapsed_ms = self.started_at.elapsed().as_millis();
+        let nr_queued = *self.bpf.nr_queued_mut();
+        let nr_scheduled = *self.bpf.nr_scheduled_mut();
+        let nr_running = *self.bpf.nr_running_mut();
+        let nr_user_dispatches = *self.bpf.nr_user_dispatches_mut();
+        let nr_kernel_dispatches = *self.bpf.nr_kernel_dispatches_mut();
+        let nr_cancel_dispatches = *self.bpf.nr_cancel_dispatches_mut();
+        let nr_bounce_dispatches = *self.bpf.nr_bounce_dispatches_mut();
+        let nr_failed_dispatches = *self.bpf.nr_failed_dispatches_mut();
+        let nr_sched_congested = *self.bpf.nr_sched_congested_mut();
+        let note = format!(
+            "elapsed_ms={} selected_once={} recovered={} nr_queued={} nr_scheduled={} nr_running={} nr_user_dispatches={} nr_kernel_dispatches={} nr_cancel_dispatches={} nr_bounce_dispatches={} nr_failed_dispatches={} nr_sched_congested={}",
+            elapsed_ms,
+            self.selected_once,
+            self.recovered,
+            nr_queued,
+            nr_scheduled,
+            nr_running,
+            nr_user_dispatches,
+            nr_kernel_dispatches,
+            nr_cancel_dispatches,
+            nr_bounce_dispatches,
+            nr_failed_dispatches,
+            nr_sched_congested,
+        );
+        self.emit_event(event, None, Some(self.plan.control_cpu), None, &note);
     }
 }
 

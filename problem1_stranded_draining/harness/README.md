@@ -37,9 +37,9 @@ sudo harness/run_rustland_vm.sh deterministic
 ```
 
 It runs preflight, exports the detected CPU plan, builds the workload and
-rustland adapter, captures adapter JSONL, samples workload progress, and performs
-bounded cleanup through a stop file and `SIGINT` to the adapter. It is not run
-locally.
+rustland adapter, runs the built binaries directly, captures adapter JSONL,
+samples workload progress, and performs bounded cleanup through a stop file and
+`SIGINT` to the adapter. It is not run locally.
 
 The first real-load milestone must prove that:
 

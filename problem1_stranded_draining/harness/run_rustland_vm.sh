@@ -25,6 +25,11 @@ esac
 
 mkdir -p "${OUT_DIR}"
 
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+export CARGO_TARGET_DIR="${TARGET_DIR}"
+WORKLOAD_BIN="${TARGET_DIR}/debug/problem1_workload"
+ADAPTER_BIN="${TARGET_DIR}/debug/problem1_stranded_draining_rustland"
+
 cargo run --quiet --bin problem1_vm_preflight
 eval "$(cargo run --quiet --bin problem1_vm_preflight -- --export-env)"
 
@@ -46,10 +51,15 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-cargo run --quiet --manifest-path adapter/rustland_repro/Cargo.toml -- \
-  --mode "${MODE}" \
-  --recovery-delay-ms "${RECOVERY_DELAY_MS:-100}" \
-  >"${ADAPTER_JSONL}" 2>"${ADAPTER_STDERR}" &
+adapter_args=(
+  --mode "${MODE}"
+  --recovery-delay-ms "${RECOVERY_DELAY_MS:-100}"
+)
+if [[ "${ADAPTER_DEBUG:-0}" == "1" ]]; then
+  adapter_args+=(--debug)
+fi
+
+"${ADAPTER_BIN}" "${adapter_args[@]}" >"${ADAPTER_JSONL}" 2>"${ADAPTER_STDERR}" &
 adapter_pid="$!"
 
 for _ in $(seq 1 100); do
@@ -64,7 +74,7 @@ if ! grep -q enabled /sys/kernel/sched_ext/state; then
   exit 1
 fi
 
-cargo run --quiet --bin problem1_workload -- \
+"${WORKLOAD_BIN}" \
   --progress-file "${PROGRESS_FILE}" \
   --stop-file "${STOP_FILE}" \
   --cpu-list "${PROBLEM1_WORKLOAD_CPU_LIST}" \
@@ -81,4 +91,6 @@ echo "adapter_jsonl=${ADAPTER_JSONL}"
 echo "adapter_stderr=${ADAPTER_STDERR}"
 echo "workload_progress=${PROGRESS_FILE}"
 echo "workload_stderr=${WORKLOAD_STDERR}"
+echo "adapter_pid=${adapter_pid}"
+echo "workload_pid=${workload_pid}"
 echo "sched_ext_state_after=$(cat /sys/kernel/sched_ext/state 2>/dev/null || echo missing)"

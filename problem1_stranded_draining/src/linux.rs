@@ -8,6 +8,39 @@ use crate::protocol::CpuId;
 
 pub const SCHED_EXT: i32 = 7;
 
+pub fn current_scheduler_policy() -> io::Result<i32> {
+    unsafe {
+        let policy = libc::sched_getscheduler(0);
+        if policy >= 0 {
+            Ok(policy)
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+}
+
+pub fn current_thread_id() -> libc::pid_t {
+    unsafe { libc::syscall(libc::SYS_gettid) as libc::pid_t }
+}
+
+pub fn current_affinity() -> io::Result<Vec<CpuId>> {
+    unsafe {
+        let mut set: libc::cpu_set_t = mem::zeroed();
+        let ret = libc::sched_getaffinity(0, mem::size_of::<libc::cpu_set_t>(), &mut set);
+        if ret != 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let mut cpus = Vec::new();
+        for cpu in 0..libc::CPU_SETSIZE as usize {
+            if libc::CPU_ISSET(cpu, &set) {
+                cpus.push(cpu as CpuId);
+            }
+        }
+        Ok(cpus)
+    }
+}
+
 pub fn set_current_affinity(cpus: &[CpuId]) -> io::Result<()> {
     if cpus.is_empty() {
         return Err(io::Error::new(
