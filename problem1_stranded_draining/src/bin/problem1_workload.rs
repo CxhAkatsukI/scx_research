@@ -1,6 +1,8 @@
 use std::env;
 use std::io;
 use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
 
 use problem1_stranded_draining::linux::{
     atomic_write, current_affinity, current_scheduler_policy, current_thread_id,
@@ -34,6 +36,9 @@ fn main() -> io::Result<()> {
             SCHED_EXT,
             format_cpu_list(&affinity),
         );
+        if cli.initial_sleep_ms > 0 {
+            thread::sleep(Duration::from_millis(cli.initial_sleep_ms));
+        }
     }
 
     let mut counter = 0_u64;
@@ -62,6 +67,7 @@ struct Cli {
     stop_file: PathBuf,
     cpu_list: Option<Vec<u16>>,
     sched_ext: bool,
+    initial_sleep_ms: u64,
     write_every: u64,
     max_iters: Option<u64>,
 }
@@ -72,6 +78,7 @@ impl Cli {
         let mut stop_file = None;
         let mut cpu_list = None;
         let mut sched_ext = false;
+        let mut initial_sleep_ms = 0;
         let mut write_every = 1_000_000;
         let mut max_iters = None;
 
@@ -90,6 +97,12 @@ impl Cli {
                 }
                 "--sched-ext" => {
                     sched_ext = true;
+                }
+                "--initial-sleep-ms" => {
+                    let value = next_value(&mut args, "--initial-sleep-ms")?;
+                    initial_sleep_ms = value.parse::<u64>().map_err(|error| {
+                        format!("invalid --initial-sleep-ms `{value}`: {error}")
+                    })?;
                 }
                 "--write-every" => {
                     let value = next_value(&mut args, "--write-every")?;
@@ -112,13 +125,14 @@ impl Cli {
             stop_file: stop_file.ok_or_else(|| "--stop-file is required".to_string())?,
             cpu_list,
             sched_ext,
+            initial_sleep_ms,
             write_every,
             max_iters,
         })
     }
 
     fn usage() -> &'static str {
-        "usage: problem1_workload --progress-file PATH --stop-file PATH [--cpu-list LIST] [--sched-ext] [--write-every N] [--max-iters N]"
+        "usage: problem1_workload --progress-file PATH --stop-file PATH [--cpu-list LIST] [--sched-ext] [--initial-sleep-ms N] [--write-every N] [--max-iters N]"
     }
 }
 

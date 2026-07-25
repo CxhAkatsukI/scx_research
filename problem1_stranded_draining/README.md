@@ -156,6 +156,9 @@ direct-dispatched tasks.
   CPU, CPU2 for harness/control activity, and reserve the remaining CPUs.
 - `problem1_workload --sched-ext` is only for the VM stage after the adapter is
   ready and partial switching is enabled.
+- The VM harness gives the workload a bounded post-opt-in sleep so the test
+  exercises a real sched-ext wakeup/enqueue instead of only observing a
+  CPU-bound task that keeps running after changing policy.
 - Deterministic gates may only hold a real legal window for a bounded time. They
   must not directly write `Q`, `C`, or `D`.
 - Random stress may report a hit rate, but a random hit is not required for
