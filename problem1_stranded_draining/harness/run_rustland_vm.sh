@@ -82,6 +82,7 @@ fi
   --cpu-list "${PROBLEM1_WORKLOAD_CPU_LIST}" \
   --sched-ext \
   --initial-sleep-ms "${WORKLOAD_INITIAL_SLEEP_MS:-1}" \
+  --yield-after-opt-in \
   --write-every "${WORKLOAD_WRITE_EVERY:-10000}" \
   2>"${WORKLOAD_STDERR}" &
 workload_pid="$!"

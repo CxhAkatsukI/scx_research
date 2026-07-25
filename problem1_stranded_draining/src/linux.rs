@@ -23,6 +23,17 @@ pub fn current_thread_id() -> libc::pid_t {
     unsafe { libc::syscall(libc::SYS_gettid) as libc::pid_t }
 }
 
+pub fn yield_current() -> io::Result<()> {
+    unsafe {
+        let ret = libc::sched_yield();
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+}
+
 pub fn current_affinity() -> io::Result<Vec<CpuId>> {
     unsafe {
         let mut set: libc::cpu_set_t = mem::zeroed();

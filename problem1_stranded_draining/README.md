@@ -157,7 +157,8 @@ direct-dispatched tasks.
 - `problem1_workload --sched-ext` is only for the VM stage after the adapter is
   ready and partial switching is enabled.
 - The VM harness gives the workload a bounded post-opt-in sleep so the test
-  exercises a real sched-ext wakeup/enqueue instead of only observing a
+  exercises a real sched-ext wakeup, then calls `sched_yield()` to force the
+  next scheduling point through sched-ext enqueue instead of only observing a
   CPU-bound task that keeps running after changing policy.
 - Deterministic gates may only hold a real legal window for a bounded time. They
   must not directly write `Q`, `C`, or `D`.

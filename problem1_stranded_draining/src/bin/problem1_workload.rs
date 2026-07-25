@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use problem1_stranded_draining::linux::{
     atomic_write, current_affinity, current_scheduler_policy, current_thread_id,
-    set_current_affinity, set_current_sched_ext, SCHED_EXT,
+    set_current_affinity, set_current_sched_ext, yield_current, SCHED_EXT,
 };
 use problem1_stranded_draining::topology::parse_cpu_list;
 
@@ -39,6 +39,9 @@ fn main() -> io::Result<()> {
         if cli.initial_sleep_ms > 0 {
             thread::sleep(Duration::from_millis(cli.initial_sleep_ms));
         }
+        if cli.yield_after_opt_in {
+            yield_current()?;
+        }
     }
 
     let mut counter = 0_u64;
@@ -68,6 +71,7 @@ struct Cli {
     cpu_list: Option<Vec<u16>>,
     sched_ext: bool,
     initial_sleep_ms: u64,
+    yield_after_opt_in: bool,
     write_every: u64,
     max_iters: Option<u64>,
 }
@@ -79,6 +83,7 @@ impl Cli {
         let mut cpu_list = None;
         let mut sched_ext = false;
         let mut initial_sleep_ms = 0;
+        let mut yield_after_opt_in = false;
         let mut write_every = 1_000_000;
         let mut max_iters = None;
 
@@ -104,6 +109,9 @@ impl Cli {
                         format!("invalid --initial-sleep-ms `{value}`: {error}")
                     })?;
                 }
+                "--yield-after-opt-in" => {
+                    yield_after_opt_in = true;
+                }
                 "--write-every" => {
                     let value = next_value(&mut args, "--write-every")?;
                     write_every = parse_nonzero_u64("--write-every", &value)?;
@@ -126,13 +134,14 @@ impl Cli {
             cpu_list,
             sched_ext,
             initial_sleep_ms,
+            yield_after_opt_in,
             write_every,
             max_iters,
         })
     }
 
     fn usage() -> &'static str {
-        "usage: problem1_workload --progress-file PATH --stop-file PATH [--cpu-list LIST] [--sched-ext] [--initial-sleep-ms N] [--write-every N] [--max-iters N]"
+        "usage: problem1_workload --progress-file PATH --stop-file PATH [--cpu-list LIST] [--sched-ext] [--initial-sleep-ms N] [--yield-after-opt-in] [--write-every N] [--max-iters N]"
     }
 }
 
