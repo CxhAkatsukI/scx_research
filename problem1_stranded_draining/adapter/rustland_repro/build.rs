@@ -17,12 +17,12 @@ fn patch_generated_bpf_wrapper() -> std::io::Result<()> {
     let patched = replace_required(
         &patched,
         "        // Try to consume the first task from the ring buffer.\n        match self.queued.consume_raw_n(1) {",
-        "        // Wait briefly for a task from the ring buffer. A pure busy consume loop can miss\n        // the wakeup timing we are trying to exercise in this repro.\n        match self.queued.poll_raw(std::time::Duration::from_millis(1)) {",
+        "        // Consume at most one task. If no record is immediately available, wait briefly on\n        // the ring buffer fd and then try a bounded consume again. libbpf's poll helper greedily\n        // consumes all available records, which can overwrite this generated wrapper's single\n        // static callback buffer.\n        let mut consumed = self.queued.consume_raw_n(1);\n        if consumed == 0 {\n            let mut pollfd = libc::pollfd {\n                fd: self.queued.epoll_fd(),\n                events: libc::POLLIN,\n                revents: 0,\n            };\n            let ready = unsafe { libc::poll(&mut pollfd, 1, 1) };\n            if ready < 0 {\n                let errno = std::io::Error::last_os_error()\n                    .raw_os_error()\n                    .unwrap_or(libc::EIO);\n                return Err(-errno);\n            }\n            if ready > 0 {\n                consumed = self.queued.consume_raw_n(1);\n            }\n        }\n\n        match consumed {",
     );
     let patched = replace_required(
         &patched,
-        "            1 => {\n                // A valid task is received, convert data to a proper task struct.\n                let task = unsafe { EnqueuedMessage::from_bytes(&BUF.0).to_queued_task() };\n                bss_data.nr_queued = bss_data.nr_queued.saturating_sub(1);\n\n                Ok(Some(task))\n            }\n            res if res < 0 => Err(res),\n            res => panic!(\"Unexpected return value from libbpf-rs::consume_raw(): {res}\"),",
-        "            res if res > 0 => {\n                // A valid task is received, convert data to a proper task struct.\n                // The callback keeps the last consumed sample; this repro drives one workload\n                // task, so consuming more than one record is still enough to advance the trace.\n                let task = unsafe { EnqueuedMessage::from_bytes(&BUF.0).to_queued_task() };\n                bss_data.nr_queued = bss_data.nr_queued.saturating_sub(res as u64);\n\n                Ok(Some(task))\n            }\n            res if res < 0 => Err(res),\n            res => panic!(\"Unexpected return value from libbpf-rs::poll_raw(): {res}\"),",
+        "            0 => {\n                // Ring buffer is empty.\n                bss_data.nr_queued = 0;\n                Ok(None)\n            }",
+        "            0 => {\n                // Ring buffer is empty.\n                Ok(None)\n            }",
     );
 
     if patched != source {
