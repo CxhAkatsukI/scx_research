@@ -141,10 +141,11 @@ The `adapter/rustland_repro` crate is the first real-adapter scaffold. It uses
 queue/mask/drain logic in Rust. It should be built and run only on a sched-ext
 capable VM.
 
-`harness/run_rustland_vm.sh` captures adapter JSONL, workload stderr, adapter
-and workload PIDs, and a workload progress counter under `traces/vm_rustland_*`.
-The adapter emits a summary event on exit or timeout so failed VM runs still
-show whether BPF reported queued or direct-dispatched tasks.
+`harness/run_rustland_vm.sh` captures adapter JSONL, workload stderr, live
+`ps`/`chrt`/`proc` state, adapter and workload PIDs, and a workload progress
+counter under `traces/vm_rustland_*`. The adapter emits a summary event on exit
+or timeout so failed VM runs still show whether BPF reported queued or
+direct-dispatched tasks.
 
 ## Safety Rules For The Real Adapter
 
