@@ -34,8 +34,10 @@ cd problem1_stranded_draining
 cargo build --manifest-path adapter/rustland_repro/Cargo.toml
 ```
 
-The adapter enables partial switching through `scx_rustland_core`. The workload
-must opt into SCHED_EXT explicitly after the adapter is loaded:
+The adapter enables partial switching through `scx_rustland_core` and disables
+the rustland backend's built-in idle fast path so opt-in workload wakeups are
+delivered to the Rust scheduler instead of being directly dispatched in BPF. The
+workload must opt into SCHED_EXT explicitly after the adapter is loaded:
 
 ```sh
 cargo run --manifest-path adapter/rustland_repro/Cargo.toml -- \

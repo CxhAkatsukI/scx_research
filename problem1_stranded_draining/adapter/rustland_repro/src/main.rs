@@ -163,7 +163,7 @@ impl<'a> Scheduler<'a> {
             0,
             true,
             opts.debug,
-            true,
+            false,
             false,
             SLICE_NS,
             SCHED_NAME,
