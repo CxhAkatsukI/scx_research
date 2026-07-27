@@ -1,0 +1,20 @@
+[package]
+name = "problem1_stranded_draining_rustland"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "GPL-2.0-only"
+
+[dependencies]
+anyhow = "1"
+ctrlc = { version = "3.1", features = ["termination"] }
+libc = "0.2"
+libbpf-rs = "=0.26.2"
+plain = "0.2"
+problem1_stranded_draining = { path = "../.." }
+procfs = "0.18"
+scx_rustland_core = "2.4.13"
+scx_utils = "1.1.2"
+
+[build-dependencies]
+scx_rustland_core = "2.4.13"
