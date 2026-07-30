@@ -31,11 +31,11 @@ rustland_repro/src/main.rs      -> runtime wrapper / action interpreter
 src/policy_core.rs              -> Rust embedded policy DSL / Verus-facing core
 ```
 
-The old statement that the project lacks kernel evidence is stale. The
-deterministic VM trace in `traces/vm_rustland_deterministic_20260724_224952/`
+The old statement that the project lacks kernel evidence is stale. The latest
+post-split deterministic VM trace is
+`traces/vm_rustland_deterministic_20260730_071339/` on the CachyOS test host. It
 showed the workload entering SCHED_EXT, the adapter observing the enqueue path,
-the invalid `Q>0, C=false, D=false` state, bounded recovery, and clean unload.
-After the split, the acceptance test is to reproduce the same trace shape again
+the invalid `Q>0, C=false, D=false` state, bounded recovery, and clean unload
 from the new three-layer implementation.
 
 ## User Goal

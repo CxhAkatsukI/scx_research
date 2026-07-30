@@ -191,13 +191,16 @@ counter under `traces/vm_rustland_*`. The adapter emits a summary event on exit
 or timeout so failed VM runs still show whether BPF reported queued or
 direct-dispatched tasks.
 
-Latest VM evidence: `traces/vm_rustland_deterministic_20260724_224952/` on the
-CachyOS test host produced a real adapter-observed deterministic recovery trace:
-`workload_matched`, `enqueue_select`, `publish_mask`, `update_observe_queue`,
-`enqueue_commit`, `stable_invalid_state`, `recovery_drain_enabled`,
-`dispatch_recovery`, and `adapter_summary_recovered`. The workload was running
-as `SCHED_EXT` with `ext.enabled=1`, and the harness reported
-`sched_ext_state_after=disabled` after cleanup.
+Latest VM evidence after the policy-core split:
+`traces/vm_rustland_deterministic_20260730_071339/` on the CachyOS test host,
+branch `codex/verus-policy-core-split`, produced a real adapter-observed
+deterministic recovery trace: `workload_matched`, `enqueue_select`,
+`publish_mask`, `update_observe_queue`, `enqueue_commit`,
+`stable_invalid_state`, `recovery_drain_enabled`, `dispatch_recovery`, and
+`adapter_summary_recovered`. The invalid event recorded
+`q=1, c=false, d=false`; the recovery dispatch recorded `q=0, d=true`. The
+workload was running as `SCHED_EXT` with `policy=7` and `ext.enabled=1`, and the
+harness reported `sched_ext_state_after=disabled` after cleanup.
 
 ## Safety Rules For The Real Adapter
 
