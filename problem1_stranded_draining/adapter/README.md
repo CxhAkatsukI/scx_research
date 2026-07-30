@@ -5,9 +5,12 @@ playground.
 
 The first real-adapter scaffold lives in `rustland_repro/`. It uses
 `scx_rustland_core`: the generic sched-ext BPF backend handles kernel
-attachment, while the Problem 1 queue/mask/drain protocol is implemented in the
-Rust scheduler. This matches the current milestone: write a simple Rust
-scheduler that exercises the buggy behavior before attempting proof work.
+attachment, while the Problem 1 queue/mask/drain policy is implemented by the
+top-level `src/policy_core.rs`. The rustland `main.rs` file is now a runtime
+wrapper: it drains BPF ringbuf events, builds `PolicyInput`s, and interprets
+`PolicyAction`s as real dispatches, bounded sleeps, and JSONL events. This keeps
+the runnable scheduler tied to the same policy core that will become the
+Verus-facing input.
 
 The adapter must:
 
@@ -16,6 +19,18 @@ The adapter must:
 - expose real adapter/BPF state for `Q`, `C`, and `D`;
 - forward protocol decisions instead of reimplementing scheduler semantics;
 - unload cleanly after every run.
+
+The intended verification split is:
+
+```text
+main.bpf.c / scx_rustland_core  -> fixed adapter, specified once
+rustland_repro/src/main.rs      -> runtime wrapper and action interpreter
+src/policy_core.rs              -> Rust embedded policy DSL / Verus target
+```
+
+`src/policy_core.rs` must stay free of BPF calls, sleeps, JSON printing, real
+time, and sysfs discovery. It may emit abstract actions such as dispatching a
+task or holding a deterministic gate; the wrapper performs those effects.
 
 ## VM-Only Build
 

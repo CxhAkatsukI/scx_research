@@ -11,7 +11,7 @@ pub mod bpf_intf {
 #[rustfmt::skip]
 mod bpf;
 
-use std::collections::VecDeque;
+use std::collections::HashMap;
 use std::mem::MaybeUninit;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -20,6 +20,10 @@ use anyhow::{bail, Result};
 use bpf::{BpfScheduler, DispatchedTask, QueuedTask, RL_CPU_ANY};
 use libbpf_rs::OpenObject;
 use problem1_stranded_draining::harness::RunMode;
+use problem1_stranded_draining::policy_core::{
+    DispatchAction, DispatchTarget, PolicyAction, PolicyCore, PolicyEvent, PolicyEventKind,
+    PolicyInput, PolicyMode, PolicyPlan, PolicySnapshot, TaskRef,
+};
 use problem1_stranded_draining::topology::{discover_or_example, TopologyPlan};
 use scx_utils::libbpf_clap_opts::LibbpfOpts;
 
@@ -110,13 +114,9 @@ struct Scheduler<'a> {
     bpf: BpfScheduler<'a>,
     opts: Opts,
     plan: TopologyPlan,
-    target_q: VecDeque<QueuedTask>,
-    published_target_llc: bool,
-    drain_target_llc: bool,
-    mask_generation: u64,
-    selected_once: bool,
+    policy: PolicyCore,
+    tasks: HashMap<TaskRef, QueuedTask>,
     invalid_since: Option<Instant>,
-    recovered: bool,
     started_at: Instant,
 }
 
@@ -172,14 +172,10 @@ impl<'a> Scheduler<'a> {
         Ok(Self {
             bpf,
             opts: opts.clone(),
+            policy: PolicyCore::new(policy_plan(&plan), policy_mode(opts.mode)),
             plan,
-            target_q: VecDeque::new(),
-            published_target_llc: true,
-            drain_target_llc: false,
-            mask_generation: 0,
-            selected_once: false,
+            tasks: HashMap::new(),
             invalid_since: None,
-            recovered: false,
             started_at: Instant::now(),
         })
     }
@@ -195,11 +191,12 @@ impl<'a> Scheduler<'a> {
                     Err(errno) => {
                         if !reported_dequeue_error {
                             let note = format!("dequeue_task returned errno={errno}");
-                            self.emit_event(
+                            self.emit_snapshot_event(
                                 "dequeue_error",
                                 None,
                                 Some(self.plan.control_cpu),
                                 None,
+                                self.policy.snapshot(),
                                 &note,
                             );
                             reported_dequeue_error = true;
@@ -209,16 +206,25 @@ impl<'a> Scheduler<'a> {
                 }
             }
 
-            self.dispatch_ready_tasks()?;
-            self.bpf.notify_complete(self.target_q.len() as u64);
+            let actions = self.policy.step(PolicyInput::DispatchTick);
+            self.apply_actions(actions)?;
 
-            if self.recovered {
+            if self.invalid_since.is_some_and(|since| {
+                since.elapsed() >= Duration::from_millis(self.opts.recovery_delay_ms)
+            }) {
+                let actions = self.policy.step(PolicyInput::RecoveryDeadlineElapsed);
+                self.apply_actions(actions)?;
+            }
+
+            self.bpf.notify_complete(self.policy.scheduled_len() as u64);
+
+            if self.policy.recovered() {
                 break;
             }
         }
 
         let exited = self.bpf.exited();
-        let event = if self.recovered {
+        let event = if self.policy.recovered() {
             "adapter_summary_recovered"
         } else if exited {
             "adapter_summary_exited"
@@ -237,43 +243,14 @@ impl<'a> Scheduler<'a> {
     }
 
     fn handle_queued_task(&mut self, task: QueuedTask) -> Result<()> {
-        if !self.is_problem_workload(&task) {
-            self.dispatch_any(task)?;
-            return Ok(());
-        }
-
-        if !self.selected_once {
-            self.selected_once = true;
-            let note = format!("matched workload pid={} comm={}", task.pid, task.comm_str());
-            self.emit_event(
-                "workload_matched",
-                Some(task.pid),
-                Some(self.plan.target_cpu),
-                Some(self.plan.target_llc),
-                &note,
-            );
-            self.emit_event(
-                "enqueue_select",
-                Some(task.pid),
-                Some(self.plan.target_cpu),
-                Some(self.plan.target_llc),
-                "enqueue observed the old mask and selected the target LLC",
-            );
-
-            if self.opts.mode == RunMode::Deterministic {
-                thread::sleep(Duration::from_millis(self.opts.gate_hold_ms));
-            }
-
-            self.publish_mask_without_target_llc();
-            self.update_observe_queue();
-            self.enqueue_commit_to_target_llc(task);
-        } else if self.published_target_llc {
-            self.enqueue_commit_to_target_llc(task);
-        } else {
-            self.dispatch_to_recovery(task)?;
-        }
-
-        Ok(())
+        let task_ref = TaskRef::new(task.pid, task.enq_cnt);
+        let is_problem_workload = self.is_problem_workload(&task);
+        self.tasks.insert(task_ref, task);
+        let actions = self.policy.step(PolicyInput::Enqueued {
+            task: task_ref,
+            is_problem_workload,
+        });
+        self.apply_actions(actions)
     }
 
     fn is_problem_workload(&self, task: &QueuedTask) -> bool {
@@ -287,88 +264,35 @@ impl<'a> Scheduler<'a> {
             || comm.starts_with(WORKLOAD_COMM_TRUNCATED)
     }
 
-    fn publish_mask_without_target_llc(&mut self) {
-        self.published_target_llc = false;
-        self.mask_generation += 1;
-        self.emit_event(
-            "publish_mask",
-            None,
-            Some(self.plan.control_cpu),
-            None,
-            "partition mask now excludes every CPU in the target LLC",
-        );
-    }
-
-    fn update_observe_queue(&mut self) {
-        if !self.published_target_llc && !self.target_q.is_empty() {
-            self.drain_target_llc = true;
-        }
-        self.emit_event(
-            "update_observe_queue",
-            None,
-            Some(self.plan.control_cpu),
-            None,
-            "updater enables D only when it observes Q>0",
-        );
-    }
-
-    fn enqueue_commit_to_target_llc(&mut self, task: QueuedTask) {
-        let pid = task.pid;
-        self.target_q.push_back(task);
-        self.emit_event(
-            "enqueue_commit",
-            Some(pid),
-            Some(self.plan.target_cpu),
-            Some(self.plan.target_llc),
-            "enqueue committed the LLC selected before the mask update",
-        );
-    }
-
-    fn dispatch_ready_tasks(&mut self) -> Result<()> {
-        if self.target_q.is_empty() {
-            return Ok(());
-        }
-
-        if self.published_target_llc {
-            if let Some(task) = self.target_q.pop_front() {
-                self.dispatch_to_target(task)?;
+    fn apply_actions(&mut self, actions: Vec<PolicyAction>) -> Result<()> {
+        for action in actions {
+            match action {
+                PolicyAction::Emit(event) => self.emit_policy_event(event),
+                PolicyAction::HoldGate => {
+                    thread::sleep(Duration::from_millis(self.opts.gate_hold_ms));
+                }
+                PolicyAction::Dispatch(dispatch) => self.dispatch_policy_action(dispatch)?,
             }
-            return Ok(());
         }
-
-        if self.drain_target_llc {
-            if let Some(task) = self.target_q.pop_front() {
-                self.dispatch_to_recovery(task)?;
-                self.recovered = true;
-            }
-            return Ok(());
-        }
-
-        if self.invalid_since.is_none() {
-            self.invalid_since = Some(Instant::now());
-            self.emit_event(
-                "stable_invalid_state",
-                self.target_q.front().map(|task| task.pid),
-                None,
-                None,
-                "both operations returned with Q>0, C=false, D=false, and the task remains eligible on recovery CPU",
-            );
-        }
-
-        if self.invalid_since.is_some_and(|since| {
-            since.elapsed() >= Duration::from_millis(self.opts.recovery_delay_ms)
-        }) {
-            self.drain_target_llc = true;
-            self.emit_event(
-                "recovery_drain_enabled",
-                self.target_q.front().map(|task| task.pid),
-                Some(self.plan.recovery_cpu),
-                None,
-                "bounded recovery enabled D for the orphan LLC queue",
-            );
-        }
-
         Ok(())
+    }
+
+    fn dispatch_policy_action(&mut self, dispatch: DispatchAction) -> Result<()> {
+        let task = self.take_task(dispatch.task)?;
+        match dispatch.target {
+            DispatchTarget::Any => self.dispatch_any(task),
+            DispatchTarget::TargetCpu => self.dispatch_to_target(task, dispatch.snapshot),
+            DispatchTarget::RecoveryCpu => self.dispatch_to_recovery(task, dispatch.snapshot),
+        }
+    }
+
+    fn take_task(&mut self, task_ref: TaskRef) -> Result<QueuedTask> {
+        self.tasks.remove(&task_ref).ok_or_else(|| {
+            anyhow::Error::msg(format!(
+                "policy asked to dispatch missing task pid={} enq_cnt={}",
+                task_ref.pid, task_ref.enqueue_seq
+            ))
+        })
     }
 
     fn dispatch_any(&mut self, task: QueuedTask) -> Result<()> {
@@ -379,42 +303,91 @@ impl<'a> Scheduler<'a> {
         Ok(())
     }
 
-    fn dispatch_to_target(&mut self, task: QueuedTask) -> Result<()> {
+    fn dispatch_to_target(&mut self, task: QueuedTask, snapshot: PolicySnapshot) -> Result<()> {
         let mut dispatched = DispatchedTask::new(&task);
         dispatched.cpu = self.plan.target_cpu as i32;
         dispatched.slice_ns = SLICE_NS;
-        self.emit_event(
+        self.emit_snapshot_event(
             "dispatch_target",
             Some(task.pid),
             Some(self.plan.target_cpu),
             Some(self.plan.target_llc),
+            snapshot,
             "dispatching on the target CPU while the target LLC is still published",
         );
         self.bpf.dispatch_task(&dispatched)?;
         Ok(())
     }
 
-    fn dispatch_to_recovery(&mut self, task: QueuedTask) -> Result<()> {
+    fn dispatch_to_recovery(&mut self, task: QueuedTask, snapshot: PolicySnapshot) -> Result<()> {
         let mut dispatched = DispatchedTask::new(&task);
         dispatched.cpu = self.plan.recovery_cpu as i32;
         dispatched.slice_ns = SLICE_NS;
-        self.emit_event(
+        self.emit_snapshot_event(
             "dispatch_recovery",
             Some(task.pid),
             Some(self.plan.recovery_cpu),
             Some(self.plan.recovery_llc),
+            snapshot,
             "dispatching through the recovery CPU after D becomes true",
         );
         self.bpf.dispatch_task(&dispatched)?;
         Ok(())
     }
 
-    fn emit_event(
+    fn emit_policy_event(&mut self, event: PolicyEvent) {
+        if event.kind == PolicyEventKind::StableInvalidState && self.invalid_since.is_none() {
+            self.invalid_since = Some(Instant::now());
+        }
+
+        let note = self.policy_event_note(event);
+        self.emit_snapshot_event(
+            event.kind.as_str(),
+            event.task.map(|task| task.pid),
+            event.cpu,
+            event.selected_target_llc,
+            event.snapshot,
+            &note,
+        );
+    }
+
+    fn policy_event_note(&self, event: PolicyEvent) -> String {
+        match event.kind {
+            PolicyEventKind::WorkloadMatched => {
+                let (pid, comm) = event
+                    .task
+                    .and_then(|task| self.tasks.get(&task).map(|queued| (task.pid, queued.comm_str())))
+                    .unwrap_or((event.task.map_or(-1, |task| task.pid), "unknown".to_string()));
+                format!("matched workload pid={pid} comm={comm}")
+            }
+            PolicyEventKind::EnqueueSelect => {
+                "enqueue observed the old mask and selected the target LLC".to_string()
+            }
+            PolicyEventKind::PublishMask => {
+                "partition mask now excludes every CPU in the target LLC".to_string()
+            }
+            PolicyEventKind::UpdateObserveQueue => {
+                "updater enables D only when it observes Q>0".to_string()
+            }
+            PolicyEventKind::EnqueueCommit => {
+                "enqueue committed the LLC selected before the mask update".to_string()
+            }
+            PolicyEventKind::StableInvalidState => {
+                "both operations returned with Q>0, C=false, D=false, and the task remains eligible on recovery CPU".to_string()
+            }
+            PolicyEventKind::RecoveryDrainEnabled => {
+                "bounded recovery enabled D for the orphan LLC queue".to_string()
+            }
+        }
+    }
+
+    fn emit_snapshot_event(
         &self,
         event: &str,
         pid: Option<i32>,
         cpu: Option<u16>,
         selected_target_llc: Option<u16>,
+        snapshot: PolicySnapshot,
         note: &str,
     ) {
         emit_static_event(
@@ -424,10 +397,10 @@ impl<'a> Scheduler<'a> {
             pid,
             cpu,
             selected_target_llc,
-            self.mask_generation,
-            self.target_q.len(),
-            self.published_target_llc,
-            self.drain_target_llc,
+            snapshot.mask_generation,
+            snapshot.q,
+            snapshot.c,
+            snapshot.d,
             note,
         );
     }
@@ -446,8 +419,8 @@ impl<'a> Scheduler<'a> {
         let note = format!(
             "elapsed_ms={} selected_once={} recovered={} nr_queued={} nr_scheduled={} nr_running={} nr_user_dispatches={} nr_kernel_dispatches={} nr_cancel_dispatches={} nr_bounce_dispatches={} nr_failed_dispatches={} nr_sched_congested={}",
             elapsed_ms,
-            self.selected_once,
-            self.recovered,
+            self.policy.selected_once(),
+            self.policy.recovered(),
             nr_queued,
             nr_scheduled,
             nr_running,
@@ -458,7 +431,32 @@ impl<'a> Scheduler<'a> {
             nr_failed_dispatches,
             nr_sched_congested,
         );
-        self.emit_event(event, None, Some(self.plan.control_cpu), None, &note);
+        self.emit_snapshot_event(
+            event,
+            None,
+            Some(self.plan.control_cpu),
+            None,
+            self.policy.snapshot(),
+            &note,
+        );
+    }
+}
+
+fn policy_mode(mode: RunMode) -> PolicyMode {
+    match mode {
+        RunMode::Report => PolicyMode::Report,
+        RunMode::Deterministic => PolicyMode::Deterministic,
+        RunMode::Stochastic => PolicyMode::Stochastic,
+    }
+}
+
+fn policy_plan(plan: &TopologyPlan) -> PolicyPlan {
+    PolicyPlan {
+        target_cpu: plan.target_cpu,
+        target_llc: plan.target_llc,
+        recovery_cpu: plan.recovery_cpu,
+        recovery_llc: plan.recovery_llc,
+        control_cpu: plan.control_cpu,
     }
 }
 

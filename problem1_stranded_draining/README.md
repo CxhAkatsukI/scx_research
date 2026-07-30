@@ -25,10 +25,10 @@ Produce a real, reproducible Problem 1 trace with these hard facts:
 5. The harness recovers the task, unloads the scheduler, verifies sched-ext is
    disabled, and verifies SSH/system health.
 
-The current local implementation covers the protocol model, a dry-run harness,
-JSON trace generation, and local tests. Kernel loading, BPF state capture,
-workload evidence, and real health checks are intentionally left for the adapter
-milestones.
+The current implementation covers the protocol model, a dry-run harness, JSON
+trace generation, local tests, and a VM-only rustland adapter that loads through
+the controlled harness. The latest milestone splits the real adapter path into a
+fixed BPF adapter, a runtime wrapper, and a Verus-friendly policy core.
 
 ## Invariant
 
@@ -63,12 +63,28 @@ appears in the gap between those two serial orders.
 problem1_stranded_draining/
 ├── adapter/      # Future sched-ext/BPF integration boundary.
 ├── harness/      # Harness boundary notes and future VM-facing scripts.
-├── src/          # Rust protocol model, dry-run harness, and trace generator.
+├── src/          # Policy core, protocol model, dry-run harness, and traces.
+├── VERUS_POLICY_CORE.md
 └── traces/       # Small canonical traces. Bulk logs stay untracked.
 ```
 
-The protocol layer is the future Verus target. It exposes the fine-grained
-transitions directly:
+The current implementation separates the real reproduction into three layers:
+
+1. Fixed sched-ext adapter: `adapter/rustland_repro/main.bpf.c` and the
+   generated `scx_rustland_core` wrapper own kernel hooks, ring buffers, DSQs,
+   CPU kicks, and partial switching.
+2. Runtime wrapper: `adapter/rustland_repro/src/main.rs` loads BPF, drains
+   queued tasks, recognizes the experiment workload, applies bounded real-time
+   gates, prints JSONL, and translates policy actions into `dispatch_task`
+   calls.
+3. Policy core: `src/policy_core.rs` is the executable policy semantics. It is a
+   Rust embedded DSL/IR: `PolicyInput + PolicyState -> PolicyAction`. It owns
+   `Q`, `C`, `D`, mask generation, first-enqueue selection, invalid-state
+   reporting, and recovery-drain state. It does not call BPF, sleep, print, read
+   the clock, or inspect sysfs.
+
+The older protocol model remains as an explanation and oracle for the race. It
+exposes the fine-grained abstract transitions directly:
 
 - `enqueue_select`
 - `publish_mask`
@@ -76,7 +92,32 @@ transitions directly:
 - `enqueue_commit`
 
 The adapter must remain thin: it can translate sched-ext callbacks and BPF/user
-events, but it must not own the protocol semantics.
+events, but it must not reimplement the policy semantics already owned by
+`PolicyCore`.
+
+## Verus Direction
+
+The verification boundary is deliberately narrower than arbitrary sched-ext
+source code. We assume schedulers are written as userspace policies on top of a
+fixed rustland-style adapter. The adapter gets a reusable environment
+specification; each scheduler exposes a Verus-friendly policy core.
+
+For this milestone the conversion plan is documented in
+`VERUS_POLICY_CORE.md` and summarized here:
+
+1. Keep `src/policy_core.rs` in a restricted Rust subset: explicit state,
+   explicit input enums, explicit action enums, no real IO, no wall-clock time,
+   no BPF calls, and no hidden side effects.
+2. Feed the same core to the real runtime wrapper and to a Verus-facing wrapper.
+   The runtime interprets `PolicyAction::Dispatch` as BPF user-ringbuf work,
+   while Verus treats it as an abstract action.
+3. Specify the fixed adapter once: ringbuf enqueue delivery, dispatch action
+   delivery, DSQ insertion, and CPU kick are environment assumptions rather than
+   per-policy code.
+4. Leave a full automatic Rust-to-Verus converter as a later goal. The current
+   claim is not "verify arbitrary existing sched-ext implementations"; it is
+   "schedulers written against this policy interface are executable and
+   analyzable."
 
 ## Local Checks
 

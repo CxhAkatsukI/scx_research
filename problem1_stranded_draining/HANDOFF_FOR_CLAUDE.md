@@ -1,6 +1,6 @@
 # Handoff For Claude: Problem 1 Stranded Draining Repro
 
-Last updated: 2026-07-25
+Last updated: 2026-07-30
 
 This document hands off the next phase of the scheduler-verification playground
 for Problem 1. It is intentionally explicit because the next agent must not
@@ -20,6 +20,23 @@ pure model artifact.
 
 The branch already tracks `origin/codex/problem1-stranded-draining-repro`.
 Whenever you make a commit, push it immediately to that remote branch.
+
+2026-07-30 update: the next proposal implementation is on
+`codex/verus-policy-core-split`. The real rustland reproduction is being split
+into three layers:
+
+```text
+main.bpf.c / scx_rustland_core  -> fixed sched-ext adapter
+rustland_repro/src/main.rs      -> runtime wrapper / action interpreter
+src/policy_core.rs              -> Rust embedded policy DSL / Verus-facing core
+```
+
+The old statement that the project lacks kernel evidence is stale. The
+deterministic VM trace in `traces/vm_rustland_deterministic_20260724_224952/`
+showed the workload entering SCHED_EXT, the adapter observing the enqueue path,
+the invalid `Q>0, C=false, D=false` state, bounded recovery, and clean unload.
+After the split, the acceptance test is to reproduce the same trace shape again
+from the new three-layer implementation.
 
 ## User Goal
 
@@ -68,14 +85,17 @@ The failure exists in the concurrent window between those serial orders.
 
 ## Current Implementation
 
-The first commit provided only the protocol model. Later local work adds a
-dry-run harness, topology planning, expanded trace fields, workload/preflight
-utilities, local CLIs, and a VM-only rustland adapter scaffold. This still does
-not provide real kernel evidence.
+The first commit provided only the protocol model. Later work added a dry-run
+harness, topology planning, expanded trace fields, workload/preflight utilities,
+local CLIs, and a VM-only rustland adapter scaffold. The 2026-07-24 VM run
+provided real deterministic kernel evidence; the 2026-07-30 split keeps that
+real adapter path but moves its policy semantics into `src/policy_core.rs`.
 
 Implemented files:
 
 - `src/protocol.rs`: abstract Rust protocol state and transition model.
+- `src/policy_core.rs`: executable Rust embedded policy DSL / Verus-facing core
+  shared by the real adapter wrapper.
 - `src/trace.rs`: JSON trace event structure and model trace generator.
 - `src/bin/protocol_trace.rs`: CLI for printing or writing the model trace.
 - `src/topology.rs`: sysfs/synthetic topology planning for target, recovery,
@@ -89,8 +109,9 @@ Implemented files:
 - `src/bin/problem1_vm_preflight.rs`: non-loading VM environment preflight.
   `--export-env` prints the detected CPU plan as shell variables.
 - `adapter/rustland_repro/`: VM-only `scx_rustland_core` scheduler scaffold.
-  It enables partial switching and implements the Problem 1 Q/C/D protocol in
-  Rust queues, with stdout JSONL event logging.
+  It enables partial switching, drains kernel events, calls `PolicyCore`, and
+  interprets policy actions as real dispatches, bounded gates, and stdout JSONL
+  event logging.
 - `harness/run_rustland_vm.sh`: VM-only wrapper that runs preflight, builds the
   adapter/workload, captures adapter JSONL and workload progress, and performs
   bounded cleanup.
