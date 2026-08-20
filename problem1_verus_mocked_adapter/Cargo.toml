@@ -1,0 +1,8 @@
+# Scaffold only. Package metadata will be filled in when implementation starts
+[package]
+name = "problem1_verus_mocked_adapter"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
