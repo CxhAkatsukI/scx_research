@@ -1,0 +1,25 @@
+[package]
+name = "sched_ext_verus"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["mock", "std"]
+mock = ["std"]
+std = ["vstd/std"]
+
+[target.'cfg(not(target_arch = "bpf"))'.dependencies]
+vstd = { version = "=0.0.0-2026-07-12-0122", default-features = false }
+
+[target.'cfg(target_arch = "bpf")'.dependencies]
+verus_builtin = "=0.0.0-2026-05-17-0151"
+verus_builtin_macros = "=0.0.0-2026-07-12-0122"
+
+[package.metadata.verus]
+verify = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(verus_only)',
+] }

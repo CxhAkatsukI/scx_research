@@ -1,0 +1,15 @@
+[package]
+name = "sched_ext_verus_bpf"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+sched_ext_verus = { path = "..", default-features = false }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
