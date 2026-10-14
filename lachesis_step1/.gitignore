@@ -1,0 +1,7 @@
+/build/
+/rust-project.json
+/lachesis
+/dep/
+**/target/
+# The parent research repository ignores JSON globally.
+!/src/toolchain/bpfel-unknown-none-v4.json
