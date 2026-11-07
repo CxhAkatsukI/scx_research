@@ -1,0 +1,6 @@
+/build/
+/dep/
+/.vm-run/
+__pycache__/
+!upstream.json
+!results/**/*.json

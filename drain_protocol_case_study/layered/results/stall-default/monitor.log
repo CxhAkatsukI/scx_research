@@ -1,0 +1,28 @@
+MATCH target pid=41750 dsq=5 Q=1 C=0 D=0; load frozen
+RESCUE target pid=41750 delay=12847.294 ms
+{
+  "probe_sessions": 1,
+  "dropped_records_by_session": [],
+  "ignored_non_target_matches": 0,
+  "target_matches": [
+    {
+      "pid": 41750,
+      "dsq": 5,
+      "issued": 9955768715517,
+      "kernel_entry": 9955769948511,
+      "landed": 9955769948845,
+      "q": 1,
+      "first_ticks": 0,
+      "last_ticks": 0,
+      "states": [
+        "R"
+      ],
+      "samples": 248,
+      "rescue_delay_ms": 12847.293942,
+      "pending_seconds": 12.763426152001557,
+      "cpu_ticks_observed": 0
+    }
+  ],
+  "unrescued_over_5s": [],
+  "unrescued_over_5s_without_cpu_progress": []
+}

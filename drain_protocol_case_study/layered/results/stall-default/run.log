@@ -1,0 +1,50 @@
+Linux cachyos-x8664 6.18.8-1-cachyos #1 SMP PREEMPT_DYNAMIC Wed, 04 Feb 2026 08:16:34 +0000 x86_64 GNU/Linux
+CPU NODE L1d:L1i:L2:L3 ONLINE
+  0    0 0:0:0:0          yes
+  1    0 1:1:1:1          yes
+  2    0 2:2:2:2          yes
+  3    0 3:3:3:3          yes
+  4    0 4:4:4:4          yes
+  5    0 5:5:5:5          yes
+  6    0 6:6:6:6          yes
+  7    0 7:7:7:7          yes
+Upstream: e7b3a219617472cf78880ac424714e52c932db61
+warning: /home/cxh/Documents/scx_research-layered-vm/drain_protocol_case_study/layered/.vm-run/scx-stall-v1.1.4/rust/scx_rustland_core/Cargo.toml: unused manifest key: lib.include
+    Finished `release` profile [optimized] target(s) in 0.46s
+scx_layered 1.1.4 x86_64-unknown-linux-gnu
+Experiment: anti-stall ENABLED (default 3 seconds, 15-second scan).
+Attached: layered_1.1.4_x86_64_unknown_linux_gnu
+Long-lived target: 41750
+Target race matched: no further heavy-load/config stimulation.
+Loader status: 124; final sched_ext state: disabled
+Causal matches: 1; rescues: 1; dropped records: [0]
+Rescue: pid=41750 delay=12847.294 ms
+Unresolved at loader exit (detach may rescue them): []
+MATCH target pid=41750 dsq=5 Q=1 C=0 D=0; load frozen
+RESCUE target pid=41750 delay=12847.294 ms
+{
+  "probe_sessions": 1,
+  "dropped_records_by_session": [],
+  "ignored_non_target_matches": 0,
+  "target_matches": [
+    {
+      "pid": 41750,
+      "dsq": 5,
+      "issued": 9955768715517,
+      "kernel_entry": 9955769948511,
+      "landed": 9955769948845,
+      "q": 1,
+      "first_ticks": 0,
+      "last_ticks": 0,
+      "states": [
+        "R"
+      ],
+      "samples": 248,
+      "rescue_delay_ms": 12847.293942,
+      "pending_seconds": 12.763426152001557,
+      "cpu_ticks_observed": 0
+    }
+  ],
+  "unrescued_over_5s": [],
+  "unrescued_over_5s_without_cpu_progress": []
+}

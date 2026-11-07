@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/sched-ext/scx",
+  "pull_request": "https://github.com/sched-ext/scx/pull/3760",
+  "before": "1537b3ba6d6b7f5f679973a0c1d15df661b5272c",
+  "after": "ef5e1c2ffa2576ff49984e7e0ff53d5eef0bfd0d",
+  "files": [
+    {"version": "before", "path": "scheds/rust/scx_mitosis/src/bpf/llc_aware.bpf.h", "blob": "dfea9da33dd6738db7e76aefe51c38da0dd092c7"},
+    {"version": "after", "path": "scheds/rust/scx_mitosis/src/bpf/llc_aware.bpf.h", "blob": "1b1490a6917c49c91b8a28c8bcd8d2c024db2284"},
+    {"version": "after", "path": "scheds/rust/scx_mitosis/src/bpf/mitosis.bpf.c", "blob": "1942de9443ebd0bde795d260d30ffaec404c8237"}
+  ]
+}

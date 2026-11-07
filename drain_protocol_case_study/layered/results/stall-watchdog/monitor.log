@@ -1,0 +1,30 @@
+MATCH target pid=45841 dsq=7 Q=1 C=0 D=0; load/config frozen; other targets stopped: [45838, 45840, 45842]
+RESCUE target pid=45841 delay=43723.147 ms
+{
+  "probe_sessions": 1,
+  "dropped_records_by_session": [
+    0
+  ],
+  "ignored_non_target_matches": 0,
+  "target_matches": [
+    {
+      "pid": 45841,
+      "dsq": 7,
+      "issued": 10781357319363,
+      "kernel_entry": 10781359035198,
+      "landed": 10781359035494,
+      "q": 1,
+      "first_ticks": 1,
+      "last_ticks": 1,
+      "states": [
+        "R"
+      ],
+      "samples": 842,
+      "rescue_delay_ms": 43723.14684,
+      "pending_seconds": 43.67504104799991,
+      "cpu_ticks_observed": 0
+    }
+  ],
+  "unrescued_over_5s": [],
+  "unrescued_over_5s_without_cpu_progress": []
+}

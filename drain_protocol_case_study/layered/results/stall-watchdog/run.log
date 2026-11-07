@@ -1,0 +1,60 @@
+Linux cachyos-x8664 6.18.8-1-cachyos #1 SMP PREEMPT_DYNAMIC Wed, 04 Feb 2026 08:16:34 +0000 x86_64 GNU/Linux
+CPU NODE L1d:L1i:L2:L3 ONLINE
+  0    0 0:0:0:0          yes
+  1    0 1:1:1:1          yes
+  2    0 2:2:2:2          yes
+  3    0 3:3:3:3          yes
+  4    0 4:4:4:4          yes
+  5    0 5:5:5:5          yes
+  6    0 6:6:6:6          yes
+  7    0 7:7:7:7          yes
+Upstream: e7b3a219617472cf78880ac424714e52c932db61
+warning: /home/cxh/Documents/scx_research-layered-vm/drain_protocol_case_study/layered/.vm-run/scx-stall-v1.1.4/rust/scx_rustland_core/Cargo.toml: unused manifest key: lib.include
+    Finished `release` profile [optimized] target(s) in 0.46s
+scx_layered 1.1.4 x86_64-unknown-linux-gnu
+Experiment: anti-stall DISABLED (bounded comparison run).
+Attached: layered_1.1.4_x86_64_unknown_linux_gnu
+Long-lived targets: 45838 45840 45841 45842
+Target race matched: no further heavy-load/config stimulation.
+Loader status: 1; final sched_ext state: disabled
+INCONCLUSIVE: scheduler did not finish the bounded run. Loader output:
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=3596474074036 slice=17266607 weight=1
+      cpus=ff no_mig=0
+
+CPU 7   : nr_run=2 flags=0x1 cpu_rel=0 ops_qseq=46544 pnt_seq=43049
+          curr=stress-ng-cpu[45854] class=ext_sched_class
+
+ *R stress-ng-cpu[45854] -3ms
+      scx_state/flags=3/0xd dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=(n/a)
+      dsq_vtime=3661090921125 slice=16858582 weight=1
+      cpus=ff no_mig=0
+
+  R stall-target[45841] -43722ms
+      scx_state/flags=3/0x9 dsq_flags=0x0 ops_state/qseq=0/0
+      sticky/holding_cpu=-1/-1 dsq_id=0x7
+      dsq_vtime=0 slice=1000000 weight=1
+      cpus=ff no_mig=0
+
+    __x64_sys_clock_nanosleep+0x125/0x160
+    do_syscall_64+0x6b/0x210
+    entry_SYSCALL_64_after_hwframe+0x76/0x7e
+
+Event counters
+--------------
+              SCX_EV_SELECT_CPU_FALLBACK:                0
+       SCX_EV_DISPATCH_LOCAL_DSQ_OFFLINE:                0
+               SCX_EV_DISPATCH_KEEP_LAST:                0
+                 SCX_EV_ENQ_SKIP_EXITING:                4
+      SCX_EV_ENQ_SKIP_MIGRATION_DISABLED:              400
+                 SCX_EV_REFILL_SLICE_DFL:              409
+                  SCX_EV_BYPASS_DURATION:        107147776
+                  SCX_EV_BYPASS_DISPATCH:                5
+                  SCX_EV_BYPASS_ACTIVATE:                1
+
+================================================================================
+
+[2m2026-11-07T10:05:06.669282Z[0m [32m INFO[0m ThreadId(01) [2mscx_layered[0m[2m:[0m [2mscheds/rust/scx_layered/src/main.rs[0m[2m:[0m[2m4635:[0m Unregister scx_layered scheduler
+Error: EXIT: runnable task stall (stall-target[45841] failed to run for 43.722s)
